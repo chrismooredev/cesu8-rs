@@ -1,8 +1,9 @@
 [package]
 
 name = "cesu8"
-version = "1.1.1"
+version = "1.2.0"
 authors = ["Eric Kidd <git@randomhacks.net>"]
+edition = "2018"
 
 description = "Convert to and from CESU-8 encoding (similar to UTF-8)"
 license = "Apache-2.0/MIT"
