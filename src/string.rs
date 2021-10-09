@@ -413,23 +413,29 @@ pub(crate) fn default_cesu8_capacity(text_len: usize) -> usize {
 // impl Add<str> for Cesu8Str
 // impl AddAssign<Cesu8Str> for Cesu8Str
 // impl AddAssign<str> for Cesu8Str
+// impl From<&str> for Cesu8Str
+// impl From<Cesu8Str> for String
+// impl From<Cesu8Str> for CString
+// impl From<Cesu8Str> for Vec<u8> // CString::new(cesu8str)
 
 #[cfg(test)]
-fn test_encoded<const JAVA: bool>(text: &str, expected: &[u8]) {
-    let variant = if JAVA { "Java" } else { "Standard" };
+fn test_encoded(variant: Variant, text: &str, expected: &[u8]) {
+    // eprintln!("testing {:?} for variant {:?} as cesu8 from utf8", text, variant);
+    let cesu8 = Cesu8Str::from_utf8(text, variant);
+    assert_eq!(expected, cesu8.as_bytes(), "[{:?} variant][{:?}] unable to properly encode to CESU-8", variant, text);
 
-    let cesu8 = Cesu8Str::<JAVA>::from_utf8(text);
-    assert_eq!(expected, cesu8.as_bytes(), "[{} variant][{:?}] unable to properly encode to CESU-8", variant, text);
+    // eprintln!("\tgetting utf8 error for expected");
     let utf8_err = std::str::from_utf8(expected).map(|_| ());
-    assert_eq!(utf8_err, cesu8.utf8_err, "[{} variant][{:?}] utf8_err invariant was not maintained (CESU-8 bytes: {:x?})", variant, text, cesu8.as_bytes());
-
+    assert_eq!(utf8_err, cesu8.utf8_error, "[{:?} variant][{:?}] utf8_err invariant was not maintained (CESU-8 bytes: {:x?})", variant, text, cesu8.as_bytes());
+    
+    // eprintln!("\treencoding {:?} from cesu8 ({:?}) to utf8", text, expected);
     let utf8 = cesu8.to_str();
-    assert_eq!(text, utf8, "[{} variant][{:?}] unexpected decoding from CESU-8 to UTF-8", variant, text)
+    assert_eq!(text, utf8, "[{:?} variant][{:?}] unexpected decoding from CESU-8 to UTF-8", variant, text)
 }
 #[cfg(test)]
 fn test_encoded_same(text: &str, expected: &[u8]) {
-    test_encoded::<false>(text, expected);
-    test_encoded::<true>(text, expected);
+    test_encoded(Variant::Standard, text, expected);
+    test_encoded(Variant::Java, text, expected);
 }
 
 #[cfg(test)]
@@ -451,15 +457,15 @@ fn surrogates() {
 
 #[test]
 fn embedded_nuls() {
-    test_encoded::<false>("plain", b"plain");
-    test_encoded::<false>("start\0end", b"start\0end");
-    test_encoded::<false>("\0middle\0", b"\0middle\0");
-    test_encoded::<false>("\0\0\0", b"\0\0\0");
+    test_encoded(Variant::Standard, "plain", b"plain");
+    test_encoded(Variant::Standard, "start\0end", b"start\0end");
+    test_encoded(Variant::Standard, "\0middle\0", b"\0middle\0");
+    test_encoded(Variant::Standard, "\0\0\0", b"\0\0\0");
 
-    test_encoded::<true>("plain", b"plain");
-    test_encoded::<true>("start\0end", b"start\xC0\x80end");
-    test_encoded::<true>("\0middle\0", b"\xC0\x80middle\xC0\x80");
-    test_encoded::<true>("\0\0\0", b"\xC0\x80\xC0\x80\xC0\x80");
+    test_encoded(Variant::Java,     "plain", b"plain");
+    test_encoded(Variant::Java,     "start\0end", b"start\xC0\x80end");
+    test_encoded(Variant::Java,     "\0middle\0", b"\xC0\x80middle\xC0\x80");
+    test_encoded(Variant::Java,     "\0\0\0", b"\xC0\x80\xC0\x80\xC0\x80");
 }
 
 #[test]
@@ -470,6 +476,7 @@ fn supplementary_pairs() {
     assert_eq!("🟣".as_bytes(), b"\xf0\x9f\x9f\xa3");
     assert_eq!(&enc_surrogates('🟣'), b"\xED\xA0\xBD\xED\xBF\xA3");
 
+    // These should encode as the same, whether its java variant or not
     test_encoded_same("plain", b"plain");
     test_encoded_same("start🟣end", b"start\xED\xA0\xBD\xED\xBF\xA3end");
     test_encoded_same("🟣middle🟣", b"\xED\xA0\xBD\xED\xBF\xA3middle\xED\xA0\xBD\xED\xBF\xA3");
@@ -484,7 +491,7 @@ fn from_utf8_inplace() {
     {
         // buffer shouldn't even be used - leave it at length 0
         let mut buf = [0; 0];
-        let std = Cesu8Str::<false>::from_utf8_inplace(text, &mut buf).expect("string to be literal, no io necessary");
+        let std = Cesu8Str::from_utf8_inplace(text, &mut buf, Variant::Standard).expect("string to be literal, no io necessary");
         
         // if borrowed, it comes from the `text` as `buf` is zero-length
         assert!(matches!(std.bytes, Cow::Borrowed(_)), "did not use str data for Cesu8Str");
@@ -494,7 +501,7 @@ fn from_utf8_inplace() {
     {
         // buffer shouldn't even be used - leave it at length 0
         let mut buf = [0; 16];
-        let std = Cesu8Str::<true>::from_utf8_inplace(text, &mut buf).expect("there was not enough space in buf");
+        let std = Cesu8Str::from_utf8_inplace(text, &mut buf, Variant::Java).expect("there was not enough space in buf");
         
         // if borrowed, it comes from the `buf` as `text` would have to change
         assert!(matches!(std.bytes, Cow::Borrowed(_)), "did not use str data for Cesu8Str");
@@ -505,9 +512,37 @@ fn from_utf8_inplace() {
     {
         // buffer shouldn't even be used - leave it at length 0
         let mut buf = [0; 0];
-        let res = Cesu8Str::<true>::from_utf8_inplace(text, &mut buf);
+        // needs to be Java variant to prevent borrowing from `text`
+        let res = Cesu8Str::from_utf8_inplace(text, &mut buf, Variant::Java);
 
-        assert!(res.is_err(), "there was enough space in buf, with 0-length buf");
+        assert!(res.is_err(), "there was enough space in buf, with 0-length buf (res = {:?})", res);
     }
 }
 
+#[test]
+fn from_cesu8_lossy() {
+    use Variant::*;
+    const _UTF8_REPLACE: &[u8] = b"\xEF\xBF\xBD";
+
+    #[track_caller] // keep panic/error lines correct for each subtest
+    fn assert_lossy<'a, 'b>(raw: &'a [u8], lossy: impl AsRef<[u8]>, variant: Variant, utf8_err: Result<(), Utf8Error>) {
+        let parsed = Cesu8Str::from_cesu8_lossy(raw, variant);
+        assert_eq!(lossy.as_ref(), parsed.as_bytes());
+        assert_eq!(utf8_err, parsed.utf8_error);
+    }
+
+    assert_lossy(b"my valid string", "my valid string", Standard, Ok(()));
+
+    // embedded null char replacement
+    assert_lossy(b"start\xC0end", "start\u{FFFD}end", Standard, Ok(()));
+    assert_lossy(b"start\xC0end", "start\u{FFFD}end", Java, Ok(()));
+
+    // missing byte on first half surrogate pair
+    assert_lossy(b"start\xED\xA0\xED\xBF\xA3end", "start\u{FFFD}\u{FFFD}end", Standard, Ok(()));
+
+    // missing byte on second surrogate pair
+    assert_lossy(b"start\xED\xA0\xBD\xED\xBFend", "start\u{FFFD}\u{FFFD}end", Standard, Ok(()));
+
+    // missing byte on second surrogate pair, with valid CESU8 for UTF8 error
+    assert_lossy(b"start\xED\xA0\xBD\xED\xBF\xA3middle\xED\xA0\xBD\xED\xBFend", b"start\xED\xA0\xBD\xED\xBF\xA3middle\xEF\xBF\xBD\xEF\xBF\xBDend", Standard, Err(utf8err_new(5, Some(1))));
+}

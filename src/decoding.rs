@@ -233,7 +233,7 @@ pub(crate) fn cesu8_validate<const ENCODE_NUL: bool>(bytes: &[u8]) -> Result<Res
     while i < bytes.len() {
         let try_utf8 = std::str::from_utf8(&bytes[i..])
             .map_err(|uerr| utf8err_inc(&uerr, i));
-
+        
         // update first_utf8_error
         if let Err(uerr) = &try_utf8 {
             if first_utf8_error.is_ok() {
@@ -247,7 +247,7 @@ pub(crate) fn cesu8_validate<const ENCODE_NUL: bool>(bytes: &[u8]) -> Result<Res
             utf8_as_cesu8_spec::<ENCODE_NUL>(Cow::Borrowed(s))
                 .map_err(|e| e.increase_valid_index(i))
         };
-
+        
 
         // This should either return, or explicitly `continue`
         // It doesn't matter what type this is, as long as it's not `()`
@@ -266,7 +266,7 @@ pub(crate) fn cesu8_validate<const ENCODE_NUL: bool>(bytes: &[u8]) -> Result<Res
                 // UTF-8 error, but we have a valid CESU-8 chunk from the valid UTF-8 portion
                 debug_assert_eq!(uerr.valid_up_to(), i+c.bytes.len());
                 i += c.bytes.len();
-
+                
                 // need to process a new UTF-8 error
                 // may simply be that we need more data
                 fn validate_byte<F: FnOnce(u8) -> bool>(bytes: &[u8], start: usize, offset: usize, first_utf8_error: Result<(), Utf8Error>, check: F) -> Result<(), Cesu8Error> {
@@ -274,16 +274,16 @@ pub(crate) fn cesu8_validate<const ENCODE_NUL: bool>(bytes: &[u8]) -> Result<Res
                         None => Err(Cesu8Error::new(start, None, first_utf8_error)),
                         Some(b) if check(*b) => Ok(()),
                         Some(_) => Err(until_next_codepoint(bytes, start, first_utf8_error)),
-        }
-        }
+                    }
+                }
 
                 if uerr.error_len().is_none() {
                     return Err(Cesu8Error::new(i, None, first_utf8_error));
-        }
+                }
 
                 debug_assert!(i+1 < bytes.len(), "there were no more bytes after a UTF-8 error with a length");
                 // eprintln!("[{}:{}] reading CESU-8 specific sequence at index {} or 0x{:X} (total len = {}) (assert_cesu = {}) (next 8 bytes: {:X?})", file!(), line!(), i, i, bytes.len(), first_cesu, &bytes[i..(i+8).min(bytes.len())]);
-
+                
                 // do not try to loop this - there are valid UTF-8 sequences starting with 0xED that we could falsely try to interpret as CESU-8
                 match bytes[i] {
                     0xC0 if ENCODE_NUL => {
@@ -291,11 +291,11 @@ pub(crate) fn cesu8_validate<const ENCODE_NUL: bool>(bytes: &[u8]) -> Result<Res
                         i += 2;
                     },
                     0xED => {
-        // from_utf8 should consume any valid three-bytes sequences
-        // our three-byte surrogate pairs should be invalid, and caught here
+                        // from_utf8 should consume any valid three-bytes sequences
+                        // our three-byte surrogate pairs should be invalid, and caught here
 
-        // assert our continuation bytes are indeed continuations
-        // assert our second & fifth bytes are on the right side of each other
+                        // assert our continuation bytes are indeed continuations
+                        // assert our second & fifth bytes are on the right side of each other
 
                         // note that the way that validate_byte works, if there is an error in the first half,
                         // then the error length only accounts for the first half. An unpaired second half will be emitted
@@ -318,7 +318,7 @@ pub(crate) fn cesu8_validate<const ENCODE_NUL: bool>(bytes: &[u8]) -> Result<Res
                         debug_assert!(std::str::from_utf8(&bytes[i..]).is_err(), "could be solved with more data, but thats not is reported");
                         return Err(until_next_codepoint(bytes, i, first_utf8_error));
                     },
-        }
+                }
 
                 continue;
             },
@@ -330,7 +330,7 @@ pub(crate) fn cesu8_validate<const ENCODE_NUL: bool>(bytes: &[u8]) -> Result<Res
                 return Err(cerr.with_utf8_error(first_utf8_error));
             },
         }
-}
+    }
 
     assert_eq!(bytes.len(), i, "did not error, but reached end without consuming entire byte slice (expected {}, processed {})", bytes.len(), i);
     Ok(first_utf8_error)
@@ -376,15 +376,120 @@ fn until_next_codepoint(bytes: &[u8], start: usize, utf8_err: Result<(), Utf8Err
     assert!(start+skip < bytes.len(), "next valid index may be after chunk - need more data?");
     Cesu8Error::new(start, Some(skip), utf8_err)
 }
+
+#[inline] #[track_caller]
+pub(crate) fn from_utf8_slice<'s>(by: &'s [u8], expect_msg: &'_ str) -> &'s str {
+    if cfg!(debug_assertions) {
+        std::str::from_utf8(by).expect(expect_msg)
+    } else {
+        unsafe { std::str::from_utf8_unchecked(by) }
+    }
+}
+#[inline] #[track_caller]
+pub(crate) fn from_utf8_vec(by: Vec<u8>, expect_msg: &str) -> String {
+    if cfg!(debug_assertions) {
+        String::from_utf8(by).expect(expect_msg)
+    } else {
+        unsafe { String::from_utf8_unchecked(by) }
+    }
+}
+
+#[test]
+fn next_codepoint() {
+    assert_eq!(1, until_next_codepoint(b"++\xC0\x80++", 0, Ok(())).error_len().unwrap());
+    assert_eq!(2, until_next_codepoint(b"++\xC0\x80++", 2, Ok(())).error_len().unwrap());
+    assert_eq!(1, until_next_codepoint(b"++\xC0\x80++", 4, Ok(())).error_len().unwrap());
+}
+#[test] #[should_panic]
+fn next_codepoint_past_slice_length() {
+    // should panic as it should skip 'past' the end of the string
+    until_next_codepoint(b"++\xC0\x80++", 6, Ok(()));
+}
+
+#[test]
+fn next_codepoint_embedded_nul() {
+    const BYTES: &[u8] = b"A \xC0\x80 ";
+    let dummy_utf8_err = utf8err_new(2, Some(1));
+    let err_with_skip = until_next_codepoint(BYTES, 2, Err(dummy_utf8_err));
+    assert_eq!(Cesu8Error::new(2, Some(2), Err(dummy_utf8_err)), err_with_skip);
+}
+
 #[test]
 fn cesu8_sequences_are_invalid_utf8() {
+    use crate::encoding::utf8err_new;
     // These should always be held correct, as it is what makes CESU-8 different to UTF-8
 
     // b"CESU8" // "UTF8"
     const WITH_SURROGATE: &[u8] = b"surrogate\xED\xA0\xBD\xED\xBF\xA3pair"; // "surrogate🟣pair"
     const WITH_NUL: &[u8] = b"my\xC0\x80string"; // "my\0string"
 
-    assert!(std::str::from_utf8(WITH_SURROGATE).is_err());
-    assert!(std::str::from_utf8(WITH_NUL).is_err());
+    assert_eq!(std::str::from_utf8(WITH_SURROGATE), Err(utf8err_new(9, Some(1))));
+    assert_eq!(std::str::from_utf8(WITH_NUL), Err(utf8err_new(2, Some(1))));
 }
 
+#[test]
+fn utf8_error_len_is_propagated() {
+    // we have valid CESU-8, followed by invalid (cut-short) UTF-8
+    // 0xE6 starts a 3-byte UTF-8 sequence that is cut short
+    const TEST_DATA: &[u8] = b"\xED\xA4\xB8\xED\xB1\xA0\xE6\x82";
+
+    let err = Cesu8Str::from_cesu8(TEST_DATA, Variant::Standard)
+        .expect_err("unterminated 3-byte UTF-8 sequence should cause CESU-8 error");
+    
+    // proper CESU-8 error should report we need more data to finish the sequence
+    assert_eq!(None, err.error_len(), "should need more data to finish 3-byte UTF-8 sequence");
+    assert_eq!(6, err.valid_up_to(), "CESU-8 error should be valid until unterminated UTF-8");
+
+    // actual UTF-8 error should report the first UTF-8 error in the string - the first one
+    let utf8_err = err.utf8_error().expect_err("invalid UTF-8 should set utf8_error");
+    assert_eq!(Some(1), utf8_err.error_len(), "CESU-8 surrogate pair should be invalid UTF-8");
+    assert_eq!(0, utf8_err.valid_up_to(), "CESU-8 surrogate pair should be invalid UTF-8");
+
+    // test proper string internal assertions are still held
+    let valid = Cesu8Str::from_cesu8(&TEST_DATA[..err.valid_up_to()], Variant::Standard)
+        .expect("removing invalid portion should result in valid CESU-8");
+    let utf8_err_valid = valid.utf8_error().expect_err("invalid UTF-8 should set utf8_error");
+    assert_eq!(Some(1), utf8_err_valid.error_len(), "CESU-8 surrogate pair should be invalid UTF-8");
+    assert_eq!(0, utf8_err_valid.valid_up_to(), "CESU-8 surrogate pair should be invalid UTF-8");
+}
+
+#[test]
+fn utf8_error_len_is_propagated_separated() {
+    // we have valid CESU-8, followed by invalid (cut-short) UTF-8
+    // 0xE6 starts a 3-byte UTF-8 sequence that is cut short
+    // adding a space to exercise different code paths
+    const TEST_DATA: &[u8] = b"\xED\xA4\xB8\xED\xB1\xA0 \xE6\x82";
+
+    let err = Cesu8Str::from_cesu8(TEST_DATA, Variant::Standard)
+        .expect_err("unterminated 3-byte UTF-8 sequence should cause CESU-8 error");
+    
+    // proper CESU-8 error should report we need more data to finish the sequence
+    assert_eq!(None, err.error_len(), "should need more data to finish 3-byte UTF-8 sequence");
+    assert_eq!(7, err.valid_up_to(), "CESU-8 error should be valid until unterminated UTF-8");
+
+    // actual UTF-8 error should report the first UTF-8 error in the string - the first one
+    let utf8_err = err.utf8_error().expect_err("invalid UTF-8 should set utf8_error");
+    assert_eq!(Some(1), utf8_err.error_len(), "CESU-8 surrogate pair should be invalid UTF-8");
+    assert_eq!(0, utf8_err.valid_up_to(), "CESU-8 surrogate pair should be invalid UTF-8");
+
+    // test proper string internal assertions are still held
+    let valid = Cesu8Str::from_cesu8(&TEST_DATA[..err.valid_up_to()], Variant::Standard)
+        .expect("removing invalid portion should result in valid CESU-8");
+    let utf8_err_valid = valid.utf8_error().expect_err("invalid UTF-8 should set utf8_error");
+    assert_eq!(Some(1), utf8_err_valid.error_len(), "CESU-8 surrogate pair should be invalid UTF-8");
+    assert_eq!(0, utf8_err_valid.valid_up_to(), "CESU-8 surrogate pair should be invalid UTF-8");
+}
+
+#[test]
+fn non_cesu_ed() {
+    // test that valid 3-byte UTF-8 sequences starting with '0xED' are still recognized as valid UTF-8,
+    // even when between CESU-8 sequences starting with 0xED
+
+    // let bytes = b"\xed\x8d\xad";
+    // last three bytes are valid UTF-8, first 6 are CESU-8 surrogate pair
+    let bytes = b"\xed\xa3\xbc\xed\xbe\x97\xed\x85\xae";
+    // let as_str = std::str::from_utf8(bytes).unwrap();
+    
+    // let _ = Cesu8Str::from_utf8(as_str, Variant::Standard);
+    let _ = Cesu8Str::from_cesu8(bytes, Variant::Standard).unwrap();
+}
