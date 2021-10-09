@@ -342,7 +342,7 @@ impl<'s> Cesu8Str<'s> {
         })
     }
 
-    /// Converts a UTF-8 string directly into the provided io::Write-capable object.
+    /// Converts a UTF-8 string directly into the provided io::Write-capable object. This allows writing directly into a preallocated Vec or byte slice stored on the stack, for example.
     pub fn from_utf8_writer<W: io::Write>(text: &str, target: &mut W, variant: Variant) -> io::Result<()> {
         let () = match encoding::utf8_as_cesu8(text.into(), variant) {
             Ok(_) => {

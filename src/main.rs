@@ -1,26 +1,11 @@
 
 use std::io::{ErrorKind, Read, Write};
 use std::fs::File;
-use std::ops::Range;
 use std::ffi::OsString;
 use std::borrow::Cow;
 
-use cesu8::Cesu8Str;
+use cesu8::{Cesu8Str, Variant};
 use clap::Clap;
-
-// / Converts files or standard io streams between standard UTF8 and CESU8, or the JVM's modified UTF-8.
-// / 
-// / Note that the default Windows' console does not support non-UTF8 sequences - attempting to type/print them will result in an error.
-// / 
-// / This tool will immediately exit upon finding an invalid character sequence.
-// / 
-// / # Exit Code
-// / `0` if operation has completed normally
-// / 
-// / `1` if an IO error has occured.
-// / 
-// / `2` if an encoding error has occured (invalid/incomplete character sequences/etc)
-//asd
 
 const HELP_TEXT: &str = "Converts files or standard IO streams between standard UTF8 and CESU8, or the JVM's modified UTF-8.
 Note that the default Windows' console does not support non-UTF8 sequences - attempting to type/print them will result in an error.
@@ -46,9 +31,12 @@ struct Opts {
     input: Option<OsString>,
     /// The output file. Defaults to stdout if '-' or not set
     output: Option<OsString>,
+
+    // #[clap(short, long, default_value = "4096")]
+    // chunk: usize,
 }
 
-const BUFSIZE: usize = 4*1024;
+// const BUFSIZE: usize = 1*1024; // 4KiB
 const EXITCODE_SUCCESS: i32 = 0;
 const EXITCODE_ERROR_IO: i32 = 1;
 const EXITCODE_ERROR_ENCODING: i32 = 2;
@@ -64,7 +52,6 @@ fn real_main() -> i32 {
     // take input in a loop, output it
     // if either input or output is closed unexpectedly, exit gracefully (instead of panickreturning a pipe error or something)
 
-    let debug_output = std::env::var("CESU_DEBUG").is_ok();
 
     let h_stdin = std::io::stdin();
     let h_stdout = std::io::stdout();
@@ -105,175 +92,173 @@ fn real_main() -> i32 {
         }
     };
 
-    // our raw buffer
-    let mut rawbuf = Box::new([0u8; BUFSIZE]);
+    let variant = match opts.java {
+        false => Variant::Standard,
+        true => Variant::Java,
+    };
+
+    read_write_loop(4096 /* opts.chunk */, !opts.decode, variant, &mut input, &mut output)
+
+}
+
+fn read_write_loop(buf_size: usize, encode: bool, variant: Variant, input: &mut dyn Read, output: &mut dyn Write) -> i32 {
     
-    // active data within our rawbuf
-    let mut bounds: Range<usize> = Range { start: 0, end: 0 };
+    let debug_output = std::env::var("CESU_DEBUG").is_ok();
 
-    // index of data within the file, for error reporting
+    macro_rules! debugln {
+        ($fmt: literal $(, $rest:expr)*) => {
+            if debug_output {
+                eprintln!(concat!("[{}:{}] ", $fmt), file!(), line!() $(, $rest)*);
+            }
+        }
+    }
+
+    // our raw buffer
+    let mut buf_vec = vec![0u8; buf_size];
+    let buf = Box::new(buf_vec.as_mut_slice());
     let mut absolute_start = 0;
+    let mut start = 0;
+    let mut end = 0;
 
-    // if we should no longer read from the input file
-    let mut reached_eof = false;
-
-    let mut output_buffer: Vec<u8> = Vec::with_capacity(BUFSIZE);
-
+    let mut input_done = false;
+    let mut io_error = false;
+    let mut bad_encoding = false;
+    
     loop {
+        // move existing buffer to start of slice
+        if start != 0 {
+            debugln!("moving buffer from {:?} to {:?}", start..end, 0..(end - start));
 
-        // if stdin hasn't closed, and we have over 1/4 of our buffer available to fill
-        if !reached_eof && (rawbuf.len() - bounds.end >= rawbuf.len()/4) {
-            if debug_output { eprintln!("reading stdin (range {:?})", bounds); }
+            buf.copy_within(start..end, 0);
+            end -= start;
+            start = 0;
+        }
+        if input_done && end == 0 {
+            // we are done with input, and we have no more data to process
+            break;
+        }
 
-            // read more bytes into our buffer
-            match input.read(&mut rawbuf[bounds.end..]) {
-                Ok(0) => { // eof
-                    reached_eof = true;
+        // if we have over 3/4s of a buffer to fill, fill the buffer
+        if !input_done && end <= buf.len()/4 {
+            match input.read(&mut buf[end..]) {
+                Ok(0) => {
+                    input_done = true;
                 },
                 Ok(n) => {
-                    assert!(bounds.end + n <= rawbuf.len(), "read more bytes than available in our buffer");
-                    if debug_output { eprintln!("read {} bytes", n); }
-                    bounds.end += n;
+                    debugln!("read input; end += n, ({} += {}) = {}", end, n, end+n);
+                    debug_assert!(end+n <= buf.len());
+                    end += n;
                 },
-                Err(e) if e.kind() == ErrorKind::BrokenPipe => { // would this ever happen?
-                    // the pipe was broken - treat it as eof
-                    reached_eof = true;
+                Err(e) if e.kind() == ErrorKind::BrokenPipe => {
+                    // BrokenPipe is "expected", just treat as EOF
+                    input_done = true;
                 },
                 Err(e) => {
-                    // unexpected error
-                    eprintln!("unexpected input error, clearing output buffer and exiting.");
-                    eprintln!("error: {}", e);
-                    reached_eof = true;
-                }
+                    eprintln!("input error: {}", e);
+                    io_error = true;
+                    input_done = true;
+                },
             }
-        } else if debug_output {
-            eprintln!("not reading stdin (reached_eof = {}, range {:?})", reached_eof, bounds);
         }
 
-        if debug_output { eprintln!("writing buffer (range {:?}, range starts at absolute {})", bounds, absolute_start); }
-
-        // each branch will perform encoding/decoding as necessary, removing it's consumed bytes from `bounds`
-
-        let output_data: Cow<[u8]> = if !opts.decode { // encode into CESU8/MUTF8
-            let as_str: &str = match std::str::from_utf8(&rawbuf[bounds.clone()]) {
-                Ok(s) => s, // whole string good
-                Err(e) => {
-                    let at = absolute_start + e.valid_up_to();
-                    if let Some(error_len) = e.error_len() { // invalid UTF8 sequence (not at end)
-                        eprintln!("input error: invalid utf-8 sequence of {} bytes from index {} (or 0x{:x})", error_len, at, at);
-                        return EXITCODE_ERROR_ENCODING;
-                    } else if !reached_eof { // unterminated UTF8, but still can read more
-
-                        if debug_output { eprintln!("unterminated UTF8, outputting what is possible"); }
-
-                        // could use from_utf8_unchecked if performance becomes a problem here
-                        std::str::from_utf8(&rawbuf[bounds.start..bounds.start+e.valid_up_to()]).unwrap()
-                    } else { // unterminated UTF8, end of input
-                        eprintln!("input error: incomplete utf-8 byte sequence from index {} (or 0x{:x}) at end of input", at, at);
-                        return EXITCODE_ERROR_ENCODING;
+        // if we have data
+        if end > 0 {
+            let (data, err) = if encode {
+                let (s, err) = match std::str::from_utf8(&buf[..end]) {
+                    Ok(s) => (s, None),
+                    Err(e) => {
+                        let s = unsafe { std::str::from_utf8_unchecked(&buf[..e.valid_up_to()]) };
+                        (s, Some((e.valid_up_to(), e.error_len())))
                     }
-                }
-            };
-
-            assert_eq!(output_buffer.len(), 0);
-            let io_err = if !opts.java {
-                Cesu8Str::<false>::from_utf8_writer(as_str, &mut output_buffer)
+                };
+                let bytes = Cesu8Str::from_utf8(s, variant).into_bytes();
+                (bytes, err)
             } else {
-                Cesu8Str::<true>::from_utf8_writer(as_str, &mut output_buffer)
-            };
-            io_err.expect("writing to a Vec cannot fail");
-            
-            let encoded = Cow::Borrowed(output_buffer.as_slice());
-
-            // move the buffer back if it is <1/4 size and starts >1/2 of it (tweak?)
-            assert!(bounds.len() >= as_str.len());
-            bounds.start += as_str.len(); // we've consumed this amount
-
-            encoded
-        } else { // decode to UTF8
-
-            let byterange = &rawbuf[bounds.clone()];
-
-            let decoded = if !opts.java {
-                cesu8::from_cesu8(byterange)
-            } else {
-                cesu8::from_java_cesu8(byterange)
-            };
-
-            // cesu8::from_*cesu8 doesn't report an error index/length like std::str::from_utf8, so we simply must exit upon a decode failure - even if it could be solved by waiting for more bytes
-            // (we could lower the consumed byte range until there is no more error... but if its at the start of the string that could take a very long time)
-
-            let as_str: Cow<str> = match decoded {
-                Ok(s) => s,
-                Err(e) => {
-                    let at = absolute_start + e.valid_up_to();
-                    if let Some(error_len) = e.error_len() { // invalid UTF8 sequence (not at end)
-                        eprintln!("input error: invalid cesu-8 sequence of {} bytes from index {} (or 0x{:x})", error_len, at, at);
-                        return EXITCODE_ERROR_ENCODING;
-                    } else if !reached_eof { // unterminated UTF8, but still can read more
-
-                        if debug_output { eprintln!("unterminated CESU8, outputting what is possible"); }
-
-                        // could use from_utf8_unchecked if performance becomes a problem here
-                        if !opts.java {
-                            cesu8::from_cesu8(&rawbuf[bounds.start..bounds.start+e.valid_up_to()]).unwrap()
-                        } else {
-                            cesu8::from_java_cesu8(&rawbuf[bounds.start..bounds.start+e.valid_up_to()]).unwrap()
-                        }
-                    } else { // unterminated UTF8, end of input
-                        eprintln!("input error: incomplete cesu-8 byte sequence from index {} (or 0x{:x}) at end of input", at, at);
-                        return EXITCODE_ERROR_ENCODING;
+                let res = Cesu8Str::from_cesu8(&buf[..end], variant);
+                // eprintln!("[{}:{}] from_cesu8 = {:?}", file!(), line!(), res);
+                let (s, err) = match res {
+                    Ok(s) => (s, None),
+                    Err(e) => {
+                        // for various reasons, there is no from_cesu8_unchecked
+                        let s = Cesu8Str::from_cesu8(&buf[..e.valid_up_to()], variant).unwrap();
+                        // eprintln!("[{}:{}] valid_cesu8 = (len = {} = 0x{:X}) {:?}", file!(), line!(), s.as_bytes().len(), s.as_bytes().len(), s);
+                        (s, Some((e.valid_up_to(), e.error_len())))
                     }
-
-                // Err(_ /*cesu8::Cesu8DecodingError*/) => {
-                    // eprintln!("cesu8 decoding error after (but may not be exactly at) input index {} (or 0x{:x}), exiting.", absolute_start, absolute_start);
-                    // return EXITCODE_ERROR_ENCODING;
-                    // TODO: make Cesu8DecodingError actually provide error index' like std::str::Utf8Error
-                },
+                };
+                let as_str = s.into_str();
+                let bytes = match as_str {
+                    Cow::Owned(b) => Cow::Owned(b.into_bytes()),
+                    Cow::Borrowed(b) => Cow::Borrowed(b.as_bytes()),
+                };
+                (bytes, err)
             };
 
-            // move the buffer back if it is <1/4 size and starts >1/2 of it (tweak?)
-            assert!(bounds.len() >= byterange.len());
-            bounds.start += byterange.len(); // we've consumed this amount
+            // if let Some(e) = err {
+            //     eprintln!("[{}:{}] error on absolute index {} (or 0x{:X}), error_len = {:?}", file!(), line!(), absolute_start + e.0, absolute_start + e.0, e.1);
+            // }
 
-            match as_str {
-                Cow::Borrowed(s) => Cow::Borrowed(s.as_bytes()),
-                Cow::Owned(s) => Cow::Owned(s.into_bytes()),
-            }
-        };
+            match err {
+                None => {
+                    // we've consumed all of it
+                    debugln!("no error on chunk 0x{:x}..0x{:x}", absolute_start, absolute_start+end);
+                    start = end;
+                    absolute_start += end;
+                },
+                Some((n, None)) => {
+                    // there was an error that could be solved with more data
+                    // "consume" n bytes
 
-        match output.write_all(&output_data) {
-            Ok(()) => {
-                if !opts.decode {
-                    assert_eq!(output_buffer.len(), output_data.len());
-                    output_buffer.clear();
+                    debugln!("need more bytes to continue from 0x{:x} (0x{:x} left)", absolute_start+n, end-n);
+
+                    start = n;
+                    absolute_start += n;
+
+                    if input_done {
+                        eprintln!("encoding error: input truncated");
+                        bad_encoding = true;
+                        break;
+                    }
+                },
+                Some((n, Some(el))) => {
+                    // there was an error in the byte encoding
+                    
+                    let enc = if encode { "utf-8" } else { "cesu-8" };
+                    eprintln!("input error: invalid {} sequence of {} bytes from index {} (or 0x{:X})", enc, el, absolute_start+n, absolute_start+n);
+                    debugln!("-> abs_start+n  ::  {}+{}={} :: 0x{:X}+0x{:X}=0x{:X}", absolute_start, n, absolute_start+n, absolute_start, n, absolute_start+n);
+                    debugln!("-> (start..end) = {:?}", start..end);
+                    let portion = &buf[n.saturating_sub(4)..(n+el+4).min(end)];
+                    debugln!("-> erroring portion (4 byte context): {:x?}", portion);
+
+                    start = n;
+                    absolute_start += n;
+
+                    end = n; // skip past erroring data
+                    
+                    bad_encoding = true;
+                    input_done = true;
                 }
-            },
-            Err(e) if e.kind() == ErrorKind::BrokenPipe => {
-                // expected error if used in pipelines for head/tail/grep/etc
-                return EXITCODE_SUCCESS;
-            },
-            Err(e) => {
-                eprintln!("unexpected output error, exiting: {:?}", e);
-                return EXITCODE_ERROR_IO;
             }
-        };
 
+            match output.write_all(&data) {
+                Ok(()) => {},
+                Err(e) if e.kind() == ErrorKind::BrokenPipe => {
+                    // stop procesing - we can't do any more
+                    break;
+                },
+                Err(e) => {
+                    eprintln!("output error: {}", e);
+                    io_error = true;
+                    break;
+                }
+            }
+        }
+    }
 
-        if debug_output { eprintln!("done writing. normalizing bounds (before {:?})", bounds); }
-        if bounds.is_empty() {
-            absolute_start += bounds.start;
-            bounds = Range { start: 0, end: 0 };
-        } else if bounds.len() <= BUFSIZE/4 && bounds.start >= BUFSIZE/2 {
-            rawbuf.copy_within(bounds.clone(), 0);
-            absolute_start += bounds.start;
-            bounds.end = bounds.len();
-            bounds.start = 0;
-        }
-        if debug_output { eprintln!("done writing. normalizing bounds (after {:?})", bounds); }
-        
-        if bounds.len() == 0 && reached_eof {
-            break EXITCODE_SUCCESS;
-        }
+    if io_error {
+        EXITCODE_ERROR_IO
+    } else if bad_encoding {
+        EXITCODE_ERROR_ENCODING
+    } else {
+        EXITCODE_SUCCESS
     }
 }

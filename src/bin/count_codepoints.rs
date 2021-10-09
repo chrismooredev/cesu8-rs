@@ -1,9 +1,6 @@
-#![feature(array_methods)]
-#![allow(unused_imports)]
-
 use std::collections::VecDeque;
-use std::io::{self, IoSliceMut, Read};
-use std::fs::{self, File};
+use std::io::{self, Read};
+use std::fs::File;
 use std::str::Utf8Error;
 
 macro_rules! cow {
@@ -26,9 +23,9 @@ impl Counters {
 		for b in chunk {
 			// if we aren't on a continuation byte
 			if b & 0b11_00_0000 != 0b10_00_0000 {
-				match b {
+				match *b {
 					// 0 => counts.nul += 1,
-					b if b & 0b1111_1111 == 0b0000_0000 => counts.nul += 1,
+					b if b               == 0b0000_0000 => counts.nul += 1,
 					b if b & 0b1000_0000 == 0b0000_0000 => counts.ascii += 1,
 					b if b & 0b1110_0000 == 0b1100_0000 => counts.len2 += 1,
 					b if b & 0b1111_0000 == 0b1110_0000 => counts.len3 += 1,
@@ -98,7 +95,7 @@ fn main() {
 fn real_main() -> i32 {
 	// skip bin name
 	let mut opts: VecDeque<_> = std::env::args().collect();
-	let exe = opts.pop_front().map(|s| cow!(s)).unwrap_or(cow!("count_bytes"));
+	let exe = opts.pop_front().map(|s| cow!(s)).unwrap_or_else(|| cow!("count_bytes"));
 
 	if opts.iter().any(|s| s == "--help") {
 		eprintln!("USAGE: {:?} [--json] [file] [KB_chunk_size=4]", exe);
@@ -138,7 +135,7 @@ fn real_main() -> i32 {
 
 	let chunk = chunk_size.unwrap_or(4) * 1024; // 4 KiB by default
 
-	let count: io::Result<Result<Counters, Utf8Error>> = match fname.as_ref().map(|s| s.as_str()) {
+	let count: io::Result<Result<Counters, Utf8Error>> = match fname.as_deref() {
 		None | Some("-") => {
 			// eprintln!("using stdin");
 			let stdin = io::stdin();
@@ -151,10 +148,9 @@ fn real_main() -> i32 {
 	};
 
 	match count {
-		
 		Ok(Ok(n)) if output_json => {
 			println!("{}", n.as_json());
-			return 0;
+			0
 		},
 		Ok(Ok(n)) => {
 			println!("len4: {}", n.len4);
@@ -163,15 +159,15 @@ fn real_main() -> i32 {
 			println!("ascii: {}", n.ascii);
 			println!("nul: {}", n.nul);
 			println!("total (chars/bytes): {}/{}", n.chars(), n.bytes());
-			return 0;
+			0
 		},
 		Ok(Err(e)) => {
 			eprintln!("error reading input: {}", e);
-			return 2;
+			2
 		},
 		Err(e) =>  {
 			eprintln!("error reading input: {}", e);
-			return 2;
+			2
 		},
 	}
 }
@@ -186,7 +182,7 @@ fn _count_chunk_bytes(chunk: &[u8]) -> usize {
 ///
 /// If the chunk contains whole characters, this will be `chunk.len()`
 fn assumed_utf8_chunk(total_i: usize, chunk: &[u8]) -> usize {
-	if chunk.len() == 0 { return 0; }
+	if chunk.is_empty() { return 0; }
 
 	// find first non-continuation byte, starting from end
 	// return either it's index, or the end of it
@@ -213,7 +209,7 @@ fn assumed_utf8_chunk(total_i: usize, chunk: &[u8]) -> usize {
 
 	// zero bytes or all continuation bytes
 	if chunk.is_empty() {
-		return 0;
+		0
 	} else {
 		// since this is a utility helper/checker program, I don't mind simply panicking on this case
 		panic!("chunk only contains continuation bytes?");
