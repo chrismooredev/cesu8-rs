@@ -25,3 +25,10 @@ build-binary = ["clap"]
 [[bin]]
 name = "cesu8"
 required-features = ["build-binary"]
+
+[[bin]]
+name = "count_codepoints"
+path = "src/bin/count_codepoints.rs"
+
+[profile.dev]
+opt-level=2 # ensure our tight loops are actually optimized
