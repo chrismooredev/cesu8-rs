@@ -3,21 +3,23 @@ use std::borrow::Cow;
 use std::io;
 use std::str::Utf8Error;
 
-use crate::{Cesu8DecodingError, TAG_CONT_U8};
+use crate::Variant;
+use crate::{Cesu8Error, TAG_CONT_U8};
 use crate::string::Cesu8Str;
 use crate::unicode::utf8_char_width;
 
 /// Validates UTF-8 string as CESU-8, erroring if any non-CESU-8 sequences are found.
-pub(crate) fn utf8_as_cesu8<const JAVA: bool>(text: Cow<'_, str>) -> Result<Cesu8Str<'_, JAVA>, Cesu8DecodingError> {
+pub(crate) fn utf8_as_cesu8_spec<const ENCODE_NUL: bool>(text: Cow<'_, str>) -> Result<Cesu8Str<'_>, Cesu8Error> {
     let mut i = 0;
     let text_bytes = match text {
         Cow::Borrowed(b) => Cow::Borrowed(b.as_bytes()),
         Cow::Owned(b) => Cow::Owned(b.into_bytes()),
     };
     while i < text_bytes.len() {
+        // eprintln!("[{}:{}, encode_nul = {}] i = {}, slice = {:?}, whole = {:?}", file!(), line!(), ENCODE_NUL, i, &text_bytes[i..], &text_bytes);
         let b = text_bytes[i];
-        if JAVA && b == 0 {
-            return Err(Cesu8DecodingError::new(i, Some(1)));
+        if ENCODE_NUL && b == b'\0' {
+            return Err(Cesu8Error::new(i, Some(1), Ok(())));
         }
 
         // ascii fast-path
@@ -30,19 +32,29 @@ pub(crate) fn utf8_as_cesu8<const JAVA: bool>(text: Cow<'_, str>) -> Result<Cesu
 
         // if width = 4 then we'd have to re-encode
         if w == 4 {
-            // str is always valid UTF8, so there was enough characters (not None)
-            return Err(Cesu8DecodingError::new(i, Some(4)));
+            // str is always valid UTF8, so there was enough characters, and there was exactly four of them (not None)
+            return Err(Cesu8Error::new(i, Some(4), Ok(())));
         }
 
         // skip the continuation bytes of the character
         // this should always be at least 1 for valid UTF8, which &str provides
+        assert_ne!(w, 0, "utf8 char length was 0, this is illegal in well-formed utf8 strings (byte {:x?}, bytes[{}] from {:x?})", b, i, text_bytes);
         i += w;
     }
 
     Ok(Cesu8Str {
-        utf8_err: Ok(()),
+        variant: ENCODE_NUL.into(),
+        utf8_error: Ok(()),
         bytes: text_bytes,
     })
+}
+
+#[inline]
+pub(crate) fn utf8_as_cesu8(text: Cow<'_, str>, variant: Variant) -> Result<Cesu8Str<'_>, Cesu8Error> {
+    match variant {
+        Variant::Standard => utf8_as_cesu8_spec::<false>(text),
+        Variant::Java => utf8_as_cesu8_spec::<true>(text),
+    }
 }
 
 /// Re-encodes UTF-8 bytes as CESU-8, returning the first created Utf8Error
@@ -55,18 +67,17 @@ pub(crate) fn utf8_as_cesu8<const JAVA: bool>(text: Cow<'_, str>) -> Result<Cesu
 /// As this range will be written to `encoded` literally, and not checked, then providing a range with invalid CESU-8 may result in undefined behavior.
 ///
 /// A value of `0` for `assume_good` will always be safe.
-#[inline(always)]
-pub(crate) unsafe fn utf8_to_cesu8_prealloc<W: io::Write, const JAVA: bool>(text: &str, assume_good: usize, encoded: &mut W) -> io::Result<Result<(), Utf8Error>> {
+pub(crate) unsafe fn utf8_to_cesu8_spec<W: io::Write, const ENCODE_NUL: bool>(text: &str, assume_good: usize, encoded: &mut W) -> io::Result<Result<(), Utf8Error>> {
     
     // make an internal function so unsafe parts can still be checked
     if assume_good != 0 {
         // check that this is correct on debug builds
-        debug_assert_eq!(utf8_as_cesu8::<JAVA>(Cow::Borrowed(text)).unwrap_err().valid_up_to(), assume_good);
+        debug_assert_eq!(utf8_as_cesu8_spec::<ENCODE_NUL>(Cow::Borrowed(text)).unwrap_err().valid_up_to(), assume_good);
         debug_assert!(assume_good <= text.len());
     }
 
     #[inline(always)]
-    fn utf8_to_cesu8_prealloc_internal<W: io::Write, const JAVA: bool>(text: &str, assume_good: usize, encoded: &mut W) -> io::Result<Result<(), Utf8Error>> {
+    fn utf8_to_cesu8_prealloc_internal<W: io::Write, const ENCODE_NUL: bool>(text: &str, assume_good: usize, encoded: &mut W) -> io::Result<Result<(), Utf8Error>> {
         let bytes = text.as_bytes();
 
         encoded.write_all(&bytes[..assume_good])?;
@@ -111,8 +122,8 @@ pub(crate) unsafe fn utf8_to_cesu8_prealloc<W: io::Write, const JAVA: bool>(text
         // while i+utf8_seg < bytes.len() {
         while let Some(&b) = bytes.get(i+utf8_seg) {
             // let b = bytes[i+utf8_seg];
-            if JAVA && b == b'\0' {
-                push_utf8!(Some(Some(1)));
+            if ENCODE_NUL && b == b'\0' {
+                push_utf8!(Some(Some(1))); // injected 0xC0,0x80 will be invalid UTF-8
 
                 // re-encode nul, skip it
                 write_cesu8!(&[0xC0, 0x80], 1);
@@ -146,9 +157,16 @@ pub(crate) unsafe fn utf8_to_cesu8_prealloc<W: io::Write, const JAVA: bool>(text
         Ok(utf8_err)
     }
 
-    utf8_to_cesu8_prealloc_internal::<W, JAVA>(text, assume_good, encoded)
+    utf8_to_cesu8_prealloc_internal::<W, ENCODE_NUL>(text, assume_good, encoded)
 }
 
+#[inline]
+pub(crate) unsafe fn utf8_to_cesu8<W: io::Write>(text: &str, assume_good: usize, encoded: &mut W, variant: Variant) -> io::Result<Result<(), Utf8Error>> {
+    match variant {
+        Variant::Standard => utf8_to_cesu8_spec::<W, false>(text, assume_good, encoded),
+        Variant::Java => utf8_to_cesu8_spec::<W, true>(text, assume_good, encoded),
+    }
+}
 
 
 #[inline]
@@ -179,7 +197,7 @@ fn enc_surrogate(surrogate: u16) -> [u8; 3] {
 ///
 /// This is useful for marking a specific index/length as a UTF8Error without performing O(n) string validation through stdlib
 #[inline]
-fn utf8err_new(valid_up_to: usize, err_len: Option<u8>) -> Utf8Error {
+pub(crate) fn utf8err_new(valid_up_to: usize, err_len: Option<u8>) -> Utf8Error {
     #[allow(dead_code)]
     struct CustomUtf8Error {
         valid_up_to: usize,
@@ -196,4 +214,9 @@ fn utf8err_new(valid_up_to: usize, err_len: Option<u8>) -> Utf8Error {
     debug_assert_eq!(std::mem::size_of::<CustomUtf8Error>(), std::mem::size_of::<Utf8Error>());
 
     unsafe { std::mem::transmute(err) }
+}
+
+#[inline]
+pub(crate) fn utf8err_inc(err: &Utf8Error, incby: usize) -> Utf8Error {
+    utf8err_new(incby + err.valid_up_to(), err.error_len().map(|b| b as u8))
 }

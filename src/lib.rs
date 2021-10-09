@@ -91,7 +91,7 @@ mod encoding;
 mod legacy_api;
 
 pub use crate::string::Cesu8Str;
-pub use crate::decoding::Cesu8DecodingError;
+pub use crate::decoding::Cesu8Error;
 pub use crate::legacy_api::*;
 
 /// Mask of the value bits of a continuation byte.
@@ -101,7 +101,7 @@ const TAG_CONT_U8: u8 = 0b1000_0000u8;
 
 /// Which variant of the encoding are we working with?
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Variant {
+pub enum Variant {
     /// Regular CESU-8, with '\0' represented as itself.
     Standard,
 
@@ -111,13 +111,28 @@ enum Variant {
     Java,
 }
 
+impl Variant {
+    /// Returns true if this Variant of CESU-8 converts nul-bytes to a `&[0xC0, 0x80]` sequence.
+    ///
+    /// This should only be true for the Java variant of CESU-8, also known as Modified UTF-8.
+    pub const fn encodes_nul(&self) -> bool {
+        match self {
+            Variant::Standard => false,
+            Variant::Java => true,
+        }
+    }
+}
 
-#[test]
-fn test_valid_cesu8() {
-    assert!(is_valid_cesu8("aé日"));
-    assert!(is_valid_java_cesu8("aé日"));
-    assert!(!is_valid_cesu8("\u{10401}"));
-    assert!(!is_valid_java_cesu8("\u{10401}"));
-    assert!(is_valid_cesu8("\0\0"));
-    assert!(!is_valid_java_cesu8("\0\0"));
+// Currently using a const generic bool for specializing functions for each variant
+// once const_generics is stabalized, we can use the variant directly
+// Creations of Cesu8Str should use this impl, then this impl can be removed once
+// const_generics is stabalized and we can adjust things properly
+#[doc(hidden)]
+impl From<bool> for Variant {
+    fn from(b: bool) -> Variant {
+        match b {
+            false => Variant::Standard,
+            true => Variant::Java,
+        }
+    }
 }

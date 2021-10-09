@@ -1,8 +1,6 @@
 use std::borrow::Cow;
 
-use crate::{Cesu8DecodingError, Cesu8Str};
-
-
+use crate::{Cesu8Error, Cesu8Str, Variant};
 
 /// Convert CESU-8 data to a Rust string, re-encoding only if necessary.
 /// Returns an error if the data cannot be represented as valid UTF-8.
@@ -22,8 +20,8 @@ use crate::{Cesu8DecodingError, Cesu8Str};
 /// assert_eq!(Cow::Borrowed("\u{10401}"),
 ///            from_cesu8(data).unwrap());
 /// ```
-pub fn from_cesu8(bytes: &[u8]) -> Result<Cow<str>, Cesu8DecodingError> {
-    Cesu8Str::<false>::from_cesu8(bytes)
+pub fn from_cesu8(bytes: &[u8]) -> Result<Cow<str>, Cesu8Error> {
+    Cesu8Str::from_cesu8(bytes, Variant::Standard)
         .map(|cesu| cesu.into_str())
 }
 
@@ -51,8 +49,8 @@ pub fn from_cesu8(bytes: &[u8]) -> Result<Cow<str>, Cesu8DecodingError> {
 /// assert_eq!(Cow::Borrowed("\0\0"),
 ///            from_java_cesu8(data).unwrap());
 /// ```
-pub fn from_java_cesu8(bytes: &[u8]) -> Result<Cow<str>, Cesu8DecodingError> {
-    Cesu8Str::<true>::from_cesu8(bytes)
+pub fn from_java_cesu8(bytes: &[u8]) -> Result<Cow<str>, Cesu8Error> {
+    Cesu8Str::from_cesu8(bytes, Variant::Java)
         .map(|cesu| cesu.into_str())
 }
 
@@ -97,7 +95,7 @@ fn test_from_cesu8() {
 ///            to_cesu8("\u{10401}"));
 /// ```
 pub fn to_cesu8(text: &str) -> Cow<[u8]> {
-    Cesu8Str::<false>::from_utf8(text).bytes
+    Cesu8Str::from_utf8(text, Variant::Standard).bytes
 }
 
 /// Convert a Rust `&str` to Java's modified UTF-8 bytes.
@@ -120,16 +118,25 @@ pub fn to_cesu8(text: &str) -> Cow<[u8]> {
 ///            to_java_cesu8("\0\0"));
 /// ```
 pub fn to_java_cesu8(text: &str) -> Cow<[u8]> {
-    Cesu8Str::<true>::from_utf8(text).bytes
+    Cesu8Str::from_utf8(text, Variant::Java).bytes
 }
 
 /// Check whether a Rust string contains valid CESU-8 data.
 pub fn is_valid_cesu8(text: &str) -> bool {
-    Cesu8Str::<false>::try_from_utf8(text).is_ok()
+    Cesu8Str::try_from_utf8(text, Variant::Standard).is_ok()
 }
 
 /// Check whether a Rust string contains valid Java's modified UTF-8 data.
 pub fn is_valid_java_cesu8(text: &str) -> bool {
-    Cesu8Str::<true>::try_from_utf8(text).is_ok()
+    Cesu8Str::try_from_utf8(text, Variant::Java).is_ok()
 }
 
+#[test]
+fn test_valid_cesu8() {
+    assert!(is_valid_cesu8("aé日"));
+    assert!(is_valid_java_cesu8("aé日"));
+    assert!(!is_valid_cesu8("\u{10401}"));
+    assert!(!is_valid_java_cesu8("\u{10401}"));
+    assert!(is_valid_cesu8("\0\0"));
+    assert!(!is_valid_java_cesu8("\0\0"));
+}
