@@ -131,7 +131,7 @@ impl Cesu8Error {
 /// Decodes a valid CESU8 bytestring into a UTF8 string. Always allocates, always validates.
 pub(crate) fn cesu8_to_utf8_const<const ENCODE_NUL: bool>(cesu: &Cesu8Str<'_>) -> String {
     // note that we can take advantage of the fact that the input should be well-formed CESU8
-    debug_assert_eq!(Variant::from(ENCODE_NUL), cesu.variant);
+    debug_assert_eq!(Variant::from(ENCODE_NUL), cesu.variant, "ran wrong const-generic routine for cesu type");
     debug_assert!(cesu8_validate::<ENCODE_NUL>(&cesu.bytes).is_ok(), "stored invalid CESU-8 within Cesu8Str (cesu8 str: variant={:?}, utf8_err={:?}, bytes={:X?})", cesu.variant, cesu.utf8_error, cesu.bytes);
 
     let bytes = cesu.as_bytes();
@@ -178,7 +178,7 @@ pub(crate) fn cesu8_to_utf8_const<const ENCODE_NUL: bool>(cesu: &Cesu8Str<'_>) -
                 i += valid_up_to;
 
                 let rest = &bytes[i..];
-                // debug_assert!(rest.len() > 0, "found no bytes while e.error_len().is_none()");
+                debug_assert!(rest.len() > 0, "found no bytes to consume without consuming whole string");
                 
                 // found either 6-pair, or (if JAVA) a 0xC0,0x80 sequence
                 if ENCODE_NUL && rest.starts_with(&[0xC0, 0x80]) {
@@ -193,13 +193,13 @@ pub(crate) fn cesu8_to_utf8_const<const ENCODE_NUL: bool>(cesu: &Cesu8Str<'_>) -
                     // assert our continuation bytes are indeed continuations
                     // assert our second & fifth bytes are on the right side of each other
 
-                    debug_assert!((second & !CONT_MASK) == TAG_CONT_U8);
-                    debug_assert!((second & 0b1111_0000) == 0b1010_0000);
-                    debug_assert!((third & !CONT_MASK) == TAG_CONT_U8);
+                    debug_assert!((second & !CONT_MASK) == TAG_CONT_U8, "expected surrogate pair, recieved something else (err bytes[..6]: {:x?})", &rest[..6]);
+                    debug_assert!((second & 0b1111_0000) == 0b1010_0000, "expected surrogate pair, recieved something else (err bytes[..6]: {:x?})", &rest[..6]);
+                    debug_assert!((third & !CONT_MASK) == TAG_CONT_U8, "expected surrogate pair, recieved something else (err bytes[..6]: {:x?})", &rest[..6]);
 
-                    debug_assert!((fifth & !CONT_MASK) == TAG_CONT_U8);
-                    debug_assert!((fifth & 0b1111_0000) == 0b1011_0000);
-                    debug_assert!((sixth & !CONT_MASK) == TAG_CONT_U8);
+                    debug_assert!((fifth & !CONT_MASK) == TAG_CONT_U8, "expected surrogate pair, recieved something else (err bytes[..6]: {:x?})", &rest[..6]);
+                    debug_assert!((fifth & 0b1111_0000) == 0b1011_0000, "expected surrogate pair, recieved something else (err bytes[..6]: {:x?})", &rest[..6]);
+                    debug_assert!((sixth & !CONT_MASK) == TAG_CONT_U8, "expected surrogate pair, recieved something else (err bytes[..6]: {:x?})", &rest[..6]);
                     
                     let utf8bytes: [u8; 4] = dec_surrogates(second, third, fifth, sixth);
 
@@ -212,7 +212,7 @@ pub(crate) fn cesu8_to_utf8_const<const ENCODE_NUL: bool>(cesu: &Cesu8Str<'_>) -
         }
     }
     
-    debug_assert_eq!(bytes.len(), i);
+    debug_assert_eq!(bytes.len(), i, "did not consume expected number of bytes while converting cesu8 to utf8");
     dest
 }
 
@@ -258,13 +258,16 @@ pub(crate) fn cesu8_validate<const ENCODE_NUL: bool>(bytes: &[u8]) -> Result<Res
                 debug_assert_eq!(i, bytes.len(), "found valid UTF-8 & CESU-8 that did not consume rest of string");
                 return Ok(first_utf8_error);
             },
-            (Ok(_), Err(cerr)) => {
-                // invalid CESU-8 within valid rest of UTF-8 string -> hard cesu-8 error
+            (Ok(_) | Err(_), Err(cerr)) => {
+                // recieved a chunk of valid UTF-8, which contained a CESU-8 error
+
+                // the CESU-8 error should be prioritized, so return that
+
                 return Err(cerr.with_utf8_error(first_utf8_error));
             },
             (Err(uerr), Ok(c)) => {
                 // UTF-8 error, but we have a valid CESU-8 chunk from the valid UTF-8 portion
-                debug_assert_eq!(uerr.valid_up_to(), i+c.bytes.len());
+                debug_assert_eq!(uerr.valid_up_to(), i+c.bytes.len(), "CESU-8 string valid with unexpected length");
                 i += c.bytes.len();
                 
                 // need to process a new UTF-8 error
@@ -322,13 +325,6 @@ pub(crate) fn cesu8_validate<const ENCODE_NUL: bool>(bytes: &[u8]) -> Result<Res
 
                 continue;
             },
-            (Err(_uerr), Err(cerr)) => {
-                // UTF-8 error, but we have a hard CESU-8 error before hand that we need to prioritize
-
-                // as such, the current UTF-8 error can be ignored, as our CESU-8 error comes first
-
-                return Err(cerr.with_utf8_error(first_utf8_error));
-            },
         }
     }
 
@@ -352,8 +348,8 @@ pub(crate) fn dec_surrogates(second: u8, third: u8, fifth: u8, sixth: u8) -> [u8
     //println!("{:0>8b} {:0>8b} {:0>8b} -> {:0>16b}", 0xEDu8, second, third, s1);
     //println!("{:0>8b} {:0>8b} {:0>8b} -> {:0>16b}", 0xEDu8, fifth, sixth, s2);
     //println!("-> {:0>32b}", c);
-    assert!((0x010000..=0x10FFFF).contains(&c));
-
+    assert!((0x010000..=0x10FFFF).contains(&c), "attempt to decode invalid cesu-8 6-byte surrogate pair");
+    
     // Convert to UTF-8.
     // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
     [0b1111_0000u8 | ((c & 0b1_1100_0000_0000_0000_0000) >> 18) as u8,

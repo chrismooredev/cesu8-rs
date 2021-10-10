@@ -72,8 +72,8 @@ pub(crate) unsafe fn utf8_to_cesu8_spec<W: io::Write, const ENCODE_NUL: bool>(te
     // make an internal function so unsafe parts can still be checked
     if assume_good != 0 {
         // check that this is correct on debug builds
-        debug_assert_eq!(utf8_as_cesu8_spec::<ENCODE_NUL>(Cow::Borrowed(text)).unwrap_err().valid_up_to(), assume_good);
-        debug_assert!(assume_good <= text.len());
+        debug_assert_eq!(utf8_as_cesu8_spec::<ENCODE_NUL>(Cow::Borrowed(text)).unwrap_err().valid_up_to(), assume_good, "tried to assume invalid CESU-8 as good");
+        debug_assert!(assume_good <= text.len(), "tried to assume_good a chunk larger than the source");
     }
 
     #[inline(always)]
@@ -186,7 +186,7 @@ pub(crate) fn enc_surrogates<C: Into<u32>>(ch: C) -> [u8; 6] {
 /// Encode a single surrogate as CESU-8.
 #[inline]
 fn enc_surrogate(surrogate: u16) -> [u8; 3] {
-    debug_assert!((0xD800..=0xDFFF).contains(&surrogate));
+    debug_assert!((0xD800..=0xDFFF).contains(&surrogate), "trying to encode invalid surrogate pair");
     // 1110xxxx 10xxxxxx 10xxxxxx
     [0b11100000  | ((surrogate & 0b1111_0000_0000_0000) >> 12) as u8,
      TAG_CONT_U8 | ((surrogate & 0b0000_1111_1100_0000) >>  6) as u8,
@@ -210,8 +210,8 @@ pub(crate) fn utf8err_new(valid_up_to: usize, err_len: Option<u8>) -> Utf8Error 
     };
 
     // (loosly) ensure that Utf8Error does not change
-    debug_assert_eq!(std::mem::align_of::<CustomUtf8Error>(), std::mem::align_of::<Utf8Error>());
-    debug_assert_eq!(std::mem::size_of::<CustomUtf8Error>(), std::mem::size_of::<Utf8Error>());
+    debug_assert_eq!(std::mem::align_of::<CustomUtf8Error>(), std::mem::align_of::<Utf8Error>(), "std::str::Utf8Error has unexpectedly changed alignment");
+    debug_assert_eq!(std::mem::size_of::<CustomUtf8Error>(), std::mem::size_of::<Utf8Error>(), "std::str::Utf8Error has unexpectedly changed alignment");
 
     unsafe { std::mem::transmute(err) }
 }

@@ -172,7 +172,7 @@ impl<'s> Cesu8Str<'s> {
                 match res {
                     Ok(s) => return s, // whole string is valid, return as-is
                     Err(_) => { // pre-allocate buffer
-                        assert!(buf.is_empty());
+                        assert!(buf.is_empty(), "buffer was not empty on first iteration");
                         buf = Vec::with_capacity(bytes.len());
                     }
                 }

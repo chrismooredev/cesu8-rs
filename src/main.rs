@@ -146,7 +146,7 @@ fn read_write_loop(buf_size: usize, encode: bool, variant: Variant, input: &mut 
                 },
                 Ok(n) => {
                     debugln!("read input; end += n, ({} += {}) = {}", end, n, end+n);
-                    debug_assert!(end+n <= buf.len());
+                    debug_assert!(end+n <= buf.len(), "read more than the buffer can hold");
                     end += n;
                 },
                 Err(e) if e.kind() == ErrorKind::BrokenPipe => {
