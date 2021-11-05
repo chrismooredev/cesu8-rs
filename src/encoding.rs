@@ -161,6 +161,11 @@ pub(crate) unsafe fn utf8_to_cesu8_spec<W: io::Write, const ENCODE_NUL: bool>(te
 }
 
 #[inline]
+pub(crate) fn utf8_to_cesu8_safe(text: &str, encoded: &mut Vec<u8>, variant: Variant) -> Result<(), Utf8Error> {
+    unsafe { utf8_to_cesu8(text, 0, encoded, variant).expect("io::Error occured within Vec's io::Write implementation. This should not happen.") }
+}
+
+#[inline]
 pub(crate) unsafe fn utf8_to_cesu8<W: io::Write>(text: &str, assume_good: usize, encoded: &mut W, variant: Variant) -> io::Result<Result<(), Utf8Error>> {
     match variant {
         Variant::Standard => utf8_to_cesu8_spec::<W, false>(text, assume_good, encoded),

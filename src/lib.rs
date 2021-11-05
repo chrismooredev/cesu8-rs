@@ -86,6 +86,7 @@
 
 mod unicode;
 mod string;
+mod string_impls;
 mod decoding;
 mod encoding;
 mod legacy_api;

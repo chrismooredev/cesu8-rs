@@ -22,7 +22,7 @@ fn valid_replacement_char() {
 
 // TODO: turn JAVA into a Variant ?
 /// A CESU-8 string
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct Cesu8Str<'s> {
     pub(crate) variant: Variant,
 
@@ -35,7 +35,7 @@ pub struct Cesu8Str<'s> {
 
 impl<'s> Cesu8Str<'s> {
     /// Returns the CESU8 variant this string is encoded in.
-    pub fn variant(&self) -> Variant {
+    pub const fn variant(&self) -> Variant {
         self.variant
     }
 
@@ -62,7 +62,7 @@ impl<'s> Cesu8Str<'s> {
     /// assert_eq!(14, utf8_err.valid_up_to());
     /// assert_eq!(Some(1), utf8_err.error_len());
     /// ```
-    pub fn utf8_error(&self) -> Result<(), Utf8Error> {
+    pub const fn utf8_error(&self) -> Result<(), Utf8Error> {
         self.utf8_error
     }
 
@@ -323,7 +323,7 @@ impl<'s> Cesu8Str<'s> {
     ///
     /// May return an io::Error if there is not enough space in the provided buffer, in which case the buffer's contents is undefined.
     pub fn from_utf8_inplace(text: &'s str, buf: &'s mut [u8], variant: Variant) -> io::Result<Cesu8Str<'s>> {
-        eprintln!("[DEBUG] from_utf8_inplace(text = {:?}, buf.len() = {:?}, variant = {:?}", text, buf.len(), variant);
+        //eprintln!("[DEBUG] from_utf8_inplace(text = {:?}, buf.len() = {:?}, variant = {:?}", text, buf.len(), variant);
         Ok(match Cesu8Str::<'_>::try_from_utf8(text, variant) {
             Ok(c) => c, // able to go without allocating
             Err(e) => {
@@ -402,21 +402,21 @@ impl<'s> Cesu8Str<'s> {
     pub fn into_bytes(self) -> Cow<'s, [u8]> {
         self.bytes
     }
+
+    pub fn to_variant(&self, variant: Variant) -> Cesu8Str<'_> {
+        if self.variant == variant {
+            self.clone()
+        } else {
+            // TODO: make this a bit more efficient?
+            Cesu8Str::from_utf8(self.to_str(), variant)
+        }
+    }
 }
 
 /// Returns estimated capacity needed for a byte buffer when converting UTF8 to CESU8
 pub(crate) fn default_cesu8_capacity(text_len: usize) -> usize {
     text_len + (text_len >> 2)
 }
-
-// impl Add<Cesu8Str> for Cesu8Str
-// impl Add<str> for Cesu8Str
-// impl AddAssign<Cesu8Str> for Cesu8Str
-// impl AddAssign<str> for Cesu8Str
-// impl From<&str> for Cesu8Str
-// impl From<Cesu8Str> for String
-// impl From<Cesu8Str> for CString
-// impl From<Cesu8Str> for Vec<u8> // CString::new(cesu8str)
 
 #[cfg(test)]
 fn test_encoded(variant: Variant, text: &str, expected: &[u8]) {

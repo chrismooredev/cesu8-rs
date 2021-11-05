@@ -178,7 +178,7 @@ pub(crate) fn cesu8_to_utf8_const<const ENCODE_NUL: bool>(cesu: &Cesu8Str<'_>) -
                 i += valid_up_to;
 
                 let rest = &bytes[i..];
-                debug_assert!(rest.len() > 0, "found no bytes to consume without consuming whole string");
+                debug_assert!(!rest.is_empty(), "found no bytes to consume without consuming whole string");
                 
                 // found either 6-pair, or (if JAVA) a 0xC0,0x80 sequence
                 if ENCODE_NUL && rest.starts_with(&[0xC0, 0x80]) {
