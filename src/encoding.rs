@@ -4,8 +4,9 @@ use std::io;
 use std::str::Utf8Error;
 
 use crate::Variant;
-use crate::{Cesu8Error, TAG_CONT_U8};
+use crate::Cesu8Error;
 use crate::string::Cesu8Str;
+use crate::decoding::TAG_CONT_U8;
 use crate::unicode::utf8_char_width;
 
 /// Validates UTF-8 string as CESU-8, erroring if any non-CESU-8 sequences are found.

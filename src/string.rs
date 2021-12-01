@@ -29,7 +29,6 @@ fn valid_replacement_char() {
 /// CESU-8 and MUTF-8 strings are encoded the same, except that MUTF-8 strings, as used by
 /// the JVM and JNI applications, encode a nul byte (hex `00`) as a UTF-8 2-byte zero
 /// character (hex `C0 80`)
-/// 
 #[derive(Clone)]
 pub struct Cesu8Str<'s> {
     pub(crate) variant: Variant,
@@ -76,7 +75,7 @@ impl<'s> Cesu8Str<'s> {
         self.utf8_error
     }
 
-    /// Clones the string's data to produce an owned version.
+    /// Ensures the string is owned to allievate any lifetime issues
     pub fn into_owned(self) -> Cesu8Str<'static> {
         let owned: Vec<u8> = match self.bytes {
             Cow::Borrowed(s) => s.to_owned(),
@@ -381,7 +380,7 @@ impl<'s> Cesu8Str<'s> {
         Ok(from_utf8_slice(&self.bytes, "utf8_err was not updated/set correctly"))
     }
 
-    /// Returns the CESU-8 string as a UTF-8 string, allocating only if necessary
+    /// Returns the CESU-8 string as a UTF-8 string, may allocate.
     pub fn to_str(&self) -> Cow<'_, str> {
         // borrowed -> borrowed
         // borrowed -> owned

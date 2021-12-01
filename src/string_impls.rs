@@ -68,9 +68,14 @@ impl<'s> PartialEq<Cesu8Str<'_>> for Cesu8Str<'s> {
         }
     }
 }
-impl<'s> PartialEq<str> for Cesu8Str<'s> {
-    fn eq(&self, other: &str) -> bool {
-        self.to_str() == other
+impl PartialEq<&str> for Cesu8Str<'_> {
+    fn eq(&self, other: &&str) -> bool {
+        self.to_str() == *other
+    }
+}
+impl<'s> PartialEq<Cesu8Str<'_>> for &str {
+    fn eq(&self, other: &Cesu8Str<'_>) -> bool {
+        *self == other.to_str()
     }
 }
 
@@ -144,3 +149,29 @@ impl Hash for Cesu8Str<'_> {
 }
 
 // allow mutable operations ala str? (eg: basically just ASCII upper/lower case conversions)
+
+#[test]
+fn eq_across_variants() {
+    let reference = "begin\0end";
+    let cesu_nul = Cesu8Str::from_utf8(reference, Variant::Standard);
+    let mutf_nul = Cesu8Str::from_utf8(reference, Variant::Java);
+    
+    // while the bytes should be different, they should still be equilavent
+    assert_ne!(cesu_nul.as_bytes(), mutf_nul.as_bytes());
+    assert_eq!(cesu_nul, mutf_nul);
+}
+
+#[test]
+fn add_strings() {
+    let mut concat = Cesu8Str::from_utf8("begin\0end", Variant::Standard);
+    concat = concat.add("**basic string");
+    concat = concat.add(&Cesu8Str::from_utf8("**owned\0cesu", Variant::Java));
+
+    assert_eq!(concat.as_bytes(), b"begin\0end**basic string**owned\0cesu");
+
+    let mut addassign = Cesu8Str::from_utf8("begin\0end", Variant::Standard);
+    addassign += "**basic string";
+    addassign += &Cesu8Str::from_utf8("**owned\0cesu", Variant::Java); // add a Java variant to a standard string
+
+    assert_eq!(addassign.as_bytes(), b"begin\0end**basic string**owned\0cesu");
+}

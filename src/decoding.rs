@@ -4,13 +4,17 @@ use std::fmt;
 use std::num::NonZeroUsize;
 use std::str::Utf8Error;
 
-use crate::CONT_MASK;
-use crate::TAG_CONT_U8;
 use crate::Variant;
 use crate::encoding::utf8_as_cesu8_spec;
 use crate::encoding::utf8err_inc;
 use crate::encoding::utf8err_new;
 use crate::string::Cesu8Str;
+
+
+/// Mask of the value bits of a continuation byte.
+const CONT_MASK: u8 = 0b0011_1111u8;
+/// Value of the tag bits (tag mask is !CONT_MASK) of a continuation byte.
+pub(crate) const TAG_CONT_U8: u8 = 0b1000_0000u8;
 
 /// Errors which can occur when attempting to interpret a `str` or sequence
 /// of `u8` as a CESU8 string.

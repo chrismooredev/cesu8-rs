@@ -20,39 +20,32 @@
 //!
 //! ```
 //! use std::borrow::Cow;
-//! use cesu8::{from_cesu8, to_cesu8};
+//! use cesu8::{Cesu8Str, Variant};
 //!
 //! // 16-bit Unicode characters are the same in UTF-8 and CESU-8.
-//! assert_eq!(Cow::Borrowed("aé日".as_bytes()),
-//!            to_cesu8("aé日"));
-//! assert_eq!(Cow::Borrowed("aé日"),
-//!            from_cesu8("aé日".as_bytes()).unwrap());
+//! assert_eq!("aé日".as_bytes(), Cesu8Str::from_utf8("aé日", Variant::Standard).as_bytes());
+//! assert_eq!("aé日", Cesu8Str::from_cesu8("aé日".as_bytes(), Variant::Standard).unwrap());
 //!
 //! // This string is CESU-8 data containing a 6-byte surrogate pair,
 //! // which decodes to a 4-byte UTF-8 string.
 //! let data = &[0xED, 0xA0, 0x81, 0xED, 0xB0, 0x81];
-//! assert_eq!(Cow::Borrowed("\u{10401}"),
-//!            from_cesu8(data).unwrap());
+//! assert_eq!("\u{10401}", Cesu8Str::from_cesu8(data, Variant::Standard).unwrap());
 //! ```
 //!
 //! ### A note about security
 //!
-//! As a general rule, this library is intended to fail on malformed or
-//! unexpected input.  CESU-8 is supposed to be an internal-only format,
-//! and if we're seeing malformed data, we assume that it's either a bug in
-//! somebody's code, or an attacker is trying to improperly encode data to
-//! evade security checks.
-//!
-//! If you have a use case for lossy conversion to UTF-8, or conversion
-//! from mixed UTF-8/CESU-8 data, please feel free to submit a pull request
-//! for `from_cesu8_lossy_permissive` with appropriate behavior.
-//!
+//! While this library tries it's best to fail and check for malformed
+//! input, this is a legacy data format that should only be used for
+//! interacting with legacy libraries. CESU-8 is intended as an
+//! internal-only format, malformed data should be assumed to be improperly
+//! encoded (a bug), or an attacker.
+//! 
 //! ### Java and U+0000, and other variants
 //!
 //! Java uses the CESU-8 encoding as described above, but with one
 //! difference: The null character U+0000 is represented as an overlong
-//! UTF-8 sequence `C0 80`. This is supported by the `from_java_cesu8` and
-//! `to_java_cesu8` methods.
+//! UTF-8 sequence `C0 80`. This is supported by the `Cesu8Str::from_cesu8(bytes, Variant::Java)` and
+//! `java_variant_str.as_bytes()` methods.
 //!
 //! ### Surrogate pairs and UTF-8
 //!
@@ -94,11 +87,6 @@ mod legacy_api;
 pub use crate::string::Cesu8Str;
 pub use crate::decoding::Cesu8Error;
 pub use crate::legacy_api::*;
-
-/// Mask of the value bits of a continuation byte.
-const CONT_MASK: u8 = 0b0011_1111u8;
-/// Value of the tag bits (tag mask is !CONT_MASK) of a continuation byte.
-const TAG_CONT_U8: u8 = 0b1000_0000u8;
 
 /// Which variant of the encoding are we working with?
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
