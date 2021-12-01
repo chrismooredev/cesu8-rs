@@ -12,11 +12,8 @@ use crate::encoding::utf8err_inc;
 use crate::encoding::utf8err_new;
 use crate::string::Cesu8Str;
 
-// TODO: lift out the allocation, write to a provided Write instance (Cursor<Vec<u8>> -> String for example)
-
 /// Errors which can occur when attempting to interpret a `str` or sequence
 /// of `u8` as a CESU8 string.
-///
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Cesu8Error {
     /// `bytes[..valid_up_to]` is a valid CESU-8 string

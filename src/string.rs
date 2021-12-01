@@ -20,9 +20,17 @@ fn valid_replacement_char() {
     assert_eq!(as_bytes, UTF8_REPLACEMENT_CHAR, "internal UTF8_REPLACEMENT_CHAR differs from the standard library");
 }
 
-// TODO: turn JAVA into a Variant ?
-/// A CESU-8 string
-#[derive(PartialEq, Eq, Clone)]
+/// A CESU-8 or Modified UTF-8 string.
+/// 
+/// The main difference between a CESU-8/MUTF-8 string and a regular UTF-8 string is
+/// in handling of 4-byte long (in UTF-8) characters. For CESU-8/MUTF-8, these characters
+/// are instead encoded as two, three-byte long UTF-16 characters.
+/// 
+/// CESU-8 and MUTF-8 strings are encoded the same, except that MUTF-8 strings, as used by
+/// the JVM and JNI applications, encode a nul byte (hex `00`) as a UTF-8 2-byte zero
+/// character (hex `C0 80`)
+/// 
+#[derive(Clone)]
 pub struct Cesu8Str<'s> {
     pub(crate) variant: Variant,
 
@@ -42,6 +50,7 @@ impl<'s> Cesu8Str<'s> {
     /// If the string is invalid UTF-8, this returns the UTF-8 error that would occur, given `str::from_utf8(cesu8.as_bytes()).unwrap_err()`
     /// 
     /// # Examples
+    /// * Example 1: A valid UTF8/Ascii string
     /// ```
     /// # use std::str;
     /// # use cesu8::{Cesu8Str, Variant};
@@ -51,6 +60,7 @@ impl<'s> Cesu8Str<'s> {
     /// assert_eq!(as_str, as_cesu8.utf8_error());
     /// assert!(as_str.is_ok());
     /// ```
+    /// * Example 2: Embedded Nuls are invalid UTF8
     /// ```
     /// # use std::str;
     /// # use cesu8::{Cesu8Str, Variant};
@@ -403,11 +413,18 @@ impl<'s> Cesu8Str<'s> {
         self.bytes
     }
 
+    /// Converts between variants
     pub fn to_variant(&self, variant: Variant) -> Cesu8Str<'_> {
         if self.variant == variant {
-            self.clone()
+            Cesu8Str {
+                variant: self.variant,
+                utf8_error: self.utf8_error,
+                bytes: Cow::Borrowed(&self.bytes),
+            }
         } else {
             // TODO: make this a bit more efficient?
+            // can specialize this logic if it shows to be a problem
+            
             Cesu8Str::from_utf8(self.to_str(), variant)
         }
     }

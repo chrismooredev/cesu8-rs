@@ -1,7 +1,12 @@
+use std::borrow::{Borrow};
 use std::fmt;
 use std::ops::{Add, AddAssign};
-use crate::Cesu8Str;
+use std::hash::{Hash, Hasher};
+use crate::{Cesu8Str, Variant};
 use crate::encoding::utf8err_inc;
+
+/// Used for equality/hashing across variants so bytes will be the same
+const COMMON_VARIANT: Variant = Variant::Standard;
 
 
 impl<'cs, 'us> Add<&'us Cesu8Str<'us>> for Cesu8Str<'cs> {
@@ -50,14 +55,48 @@ impl<'cs, 'us> AddAssign<&'us str> for Cesu8Str<'cs> {
         }
     }
 }
-// impl std::fmt::Write ??
 
-// impl From<&str> for Cesu8Str
-// impl From<Cesu8Str> for String
-// impl From<Cesu8Str> for CString
-// impl From<Cesu8Str> for Vec<u8> // CString::new(cesu8str)
-// impl AsRef<&[u8]> for Cesu8Str
-// impl Borrow<[u8]> for Cesu8Str
+impl<'s> Eq for Cesu8Str<'s> {}
+impl<'s> PartialEq<Cesu8Str<'_>> for Cesu8Str<'s> {
+    fn eq(&self, other: &Cesu8Str<'_>) -> bool {
+        if self.variant == other.variant {
+            self.bytes == other.bytes
+        } else {
+            let left = self.to_variant(COMMON_VARIANT);
+            let right = other.to_variant(COMMON_VARIANT);
+            left.bytes == right.bytes
+        }
+    }
+}
+impl<'s> PartialEq<str> for Cesu8Str<'s> {
+    fn eq(&self, other: &str) -> bool {
+        self.to_str() == other
+    }
+}
+
+// can't implement things like (&str -> Cesu8Str) since we don't know the desired Variant
+
+impl From<Cesu8Str<'_>> for String {
+    fn from(c8s: Cesu8Str) -> String {
+        c8s.to_str().into_owned()
+    }
+}
+impl From<Cesu8Str<'_>> for Vec<u8> {
+    fn from(c8s: Cesu8Str) -> Vec<u8> {
+        c8s.bytes.into_owned()
+    }
+}
+
+impl<'s> AsRef<[u8]> for Cesu8Str<'s> {
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+impl<'s> Borrow<[u8]> for Cesu8Str<'s> {
+    fn borrow(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
 
 // impl Debug (to not show all bytes as hex - escape invalid utf8 as hex?)
 impl<'s> fmt::Debug for Cesu8Str<'s> {
@@ -85,15 +124,23 @@ impl<'s> fmt::Debug for Cesu8Str<'s> {
             .finish()
     }
 }
-// impl Display (implicit conversion to UTF-8, show that)
+
 impl<'s> fmt::Display for Cesu8Str<'s> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // implicit conversion to UTF-8
         f.write_str(&self.to_str())
     }
 }
-// impl Default
-// impl Eq, Hash, Ord
-// Index
-// PartialEq<u8, Cow<str | [u8]>, Cesu8Str, String, OsStr, OsString>
+// impl Default -- Nope, would need variant
+// impl Ord
+impl Hash for Cesu8Str<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // to ensure `k1 == k2 -> hash(k1) == hash(k2)` holds,
+        // we need to turn this into a common variant as a
+        // sort of lingua-franca between our two variants
+        // (otherwise bytes could differ for logically same string)
+        self.to_variant(COMMON_VARIANT).bytes.hash(state);
+    }
+}
 
 // allow mutable operations ala str? (eg: basically just ASCII upper/lower case conversions)
