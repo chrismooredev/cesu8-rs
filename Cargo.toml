@@ -2,7 +2,7 @@
 
 name = "cesu8"
 version = "1.2.0"
-authors = ["Eric Kidd <git@randomhacks.net>"]
+authors = ["Eric Kidd <git@randomhacks.net>", "Chris Moore <git@chrismoore.dev>"]
 edition = "2018"
 
 description = "Convert to and from CESU-8 encoding (similar to UTF-8)"
@@ -13,7 +13,7 @@ repository = "https://github.com/emk/cesu8-rs"
 documentation = "http://emk.github.io/cesu8-rs/cesu8/index.html"
 
 [dependencies]
-clap = { version = "3.0.0-beta.4", optional = true }
+clap = { version = "=3.0.0-beta.4", optional = true }
 
 [features]
 # Allow access to unstable features when being built with a nightly compiler,
