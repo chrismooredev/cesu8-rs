@@ -1,5 +1,6 @@
 use std::borrow::{Borrow};
 use std::fmt;
+use std::cmp::Ordering;
 use std::ops::{Add, AddAssign};
 use std::hash::{Hash, Hasher};
 use crate::{Cesu8Str, Variant};
@@ -68,14 +69,65 @@ impl<'s> PartialEq<Cesu8Str<'_>> for Cesu8Str<'s> {
         }
     }
 }
-impl PartialEq<&str> for Cesu8Str<'_> {
-    fn eq(&self, other: &&str) -> bool {
-        self.to_str() == *other
+impl PartialEq<str> for Cesu8Str<'_> {
+    fn eq(&self, other: &str) -> bool {
+        if self.utf8_error().is_ok() {
+            self.bytes == other.as_bytes()
+        } else {
+            self.to_str() == *other
+        }
     }
 }
 impl<'s> PartialEq<Cesu8Str<'_>> for &str {
     fn eq(&self, other: &Cesu8Str<'_>) -> bool {
-        *self == other.to_str()
+        // use the other definition, which checks for UTF-8ness
+        other.eq(*self)
+    }
+}
+
+impl<'s> PartialOrd<Cesu8Str<'_>> for Cesu8Str<'s> {
+    fn partial_cmp(&self, other: &Cesu8Str<'_>) -> Option<Ordering> {  
+        Some(self.cmp(other))
+    }
+}
+impl<'s> PartialOrd<str> for Cesu8Str<'s> {
+    fn partial_cmp(&self, other: &str) -> Option<Ordering> {
+        // TODO: make this not allocate if this isn't UTF-8 ?
+        (*self.to_str()).partial_cmp(other)
+    }
+}
+impl<'s> Ord for Cesu8Str<'s> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        if self.variant == other.variant {
+            return self.bytes.cmp(&other.bytes);
+        }
+        
+        let mut sbi = self.bytes.iter().copied();
+        let mut obi = other.bytes.iter().copied();
+
+        loop {
+            /// Gets the next character in the byte iterator. Normalizes zeros.
+            #[inline(always)]
+            fn from_iter<I: Iterator<Item = u8>>(v: Variant, i: &mut I) -> Option<u8> {
+                match i.next() {
+                    None => None,
+                    Some(0xC0) if v.encodes_nul() => {
+                        let _80 = i.next();
+                        debug_assert_eq!(_80, Some(0x80));
+                        Some(0x00)
+                    },
+                    Some(o) => Some(o)
+                }
+            }
+
+            let sb = from_iter(self.variant, &mut sbi);
+            let ob = from_iter(other.variant, &mut obi);
+
+            match sb.cmp(&ob) {
+                Ordering::Equal => {},
+                ord => return ord,
+            }
+        }
     }
 }
 
@@ -137,7 +189,6 @@ impl<'s> fmt::Display for Cesu8Str<'s> {
     }
 }
 // impl Default -- Nope, would need variant
-// impl Ord
 impl Hash for Cesu8Str<'_> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         // to ensure `k1 == k2 -> hash(k1) == hash(k2)` holds,
