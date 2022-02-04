@@ -421,11 +421,30 @@ impl<'s> Cesu8Str<'s> {
                 bytes: Cow::Borrowed(&self.bytes),
             }
         } else {
+            self.clone().into_variant(variant)
+        }
+    }
+
+    /// Encodes this string into the specified variant. No-op if already encoded in the variant.
+    pub fn into_variant(self, variant: Variant) -> Cesu8Str<'s> {
+        if self.variant == variant {
+            self
+        } else {
             // TODO: make this a bit more efficient?
             // can specialize this logic if it shows to be a problem
             
-            Cesu8Str::from_utf8(self.to_str(), variant)
+            Cesu8Str::from_utf8(self.to_str(), variant).into_owned()
         }
+    }
+
+    /// Returns a byte buffer of this CESU-8 string, converted to the specified variant with a null-terminator
+    /// 
+    /// This buffer is suitable for passing to JNI methods. Allocates if there is not enough
+    /// capacity to store the terminator.
+    pub fn into_bytes0(self, var: Variant) -> Vec<u8> {
+        let mut bytes = self.into_variant(var).into_bytes().into_owned();
+        bytes.push(b'\0');
+        bytes
     }
 }
 
