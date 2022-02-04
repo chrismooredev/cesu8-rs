@@ -78,12 +78,14 @@ impl PartialEq<str> for Cesu8Str<'_> {
         }
     }
 }
-impl<'s> PartialEq<Cesu8Str<'_>> for &str {
+impl PartialEq<Cesu8Str<'_>> for &str {
     fn eq(&self, other: &Cesu8Str<'_>) -> bool {
         // use the other definition, which checks for UTF-8ness
         other.eq(*self)
     }
 }
+impl<'a> PartialEq<&'a str> for Cesu8Str<'_> { fn eq(&self, other: &&'a str) -> bool { *self == **other } }
+impl PartialEq<&Cesu8Str<'_>> for &str { fn eq(&self, other: &&Cesu8Str<'_>) -> bool { *self == **other } }
 
 impl<'s> PartialOrd<Cesu8Str<'_>> for Cesu8Str<'s> {
     fn partial_cmp(&self, other: &Cesu8Str<'_>) -> Option<Ordering> {  
