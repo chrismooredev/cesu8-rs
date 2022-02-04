@@ -302,7 +302,7 @@ impl<'s> Cesu8Str<'s> {
                         Cow::Owned(v) => Cow::Owned(v.into_bytes()),
                     }
                 }
-            }, 
+            },
             Err(e) => {
                 let mut data = Vec::with_capacity(default_cesu8_capacity(text.len()));
 
@@ -442,9 +442,23 @@ impl<'s> Cesu8Str<'s> {
     /// This buffer is suitable for passing to JNI methods. Allocates if there is not enough
     /// capacity to store the terminator.
     pub fn into_bytes0(self, var: Variant) -> Vec<u8> {
-        let mut bytes = self.into_variant(var).into_bytes().into_owned();
+        let cow_bytes = self.into_variant(var).into_bytes();
+        // handle cloning specially so we can allocate new string length, including null-terminator
+        let mut bytes = match cow_bytes {
+            Cow::Owned(o) => o,
+            Cow::Borrowed(b) => {
+                let mut new = Vec::with_capacity(b.len() + 1);
+                new.extend_from_slice(b);
+                new
+            }
+        };
         bytes.push(b'\0');
         bytes
+    }
+
+    /// Convience function to turn a UTF-8 string into a null-terminated CESU-8 string of the specified variant
+    pub fn reencode0<C: Into<Cow<'s, str>>>(s: C, var: Variant) -> Vec<u8> {
+        Cesu8Str::from_utf8(s, var).into_bytes0(var)
     }
 }
 
