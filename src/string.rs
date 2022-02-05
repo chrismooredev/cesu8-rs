@@ -439,8 +439,7 @@ impl<'s> Cesu8Str<'s> {
 
     /// Returns a byte buffer of this CESU-8 string, converted to the specified variant with a null-terminator
     /// 
-    /// This buffer is suitable for passing to JNI methods. Allocates if there is not enough
-    /// capacity to store the terminator.
+    /// Allocates if there is not enough capacity to store the terminator.
     pub fn into_bytes0(self, var: Variant) -> Vec<u8> {
         let cow_bytes = self.into_variant(var).into_bytes();
         // handle cloning specially so we can allocate new string length, including null-terminator
@@ -456,7 +455,7 @@ impl<'s> Cesu8Str<'s> {
         bytes
     }
 
-    /// Convience function to turn a UTF-8 string into a null-terminated CESU-8 string of the specified variant
+    /// Convenience function to turn a UTF-8 string into a null-terminated CESU-8 string of the specified variant
     pub fn reencode0<C: Into<Cow<'s, str>>>(s: C, var: Variant) -> Vec<u8> {
         Cesu8Str::from_utf8(s, var).into_bytes0(var)
     }

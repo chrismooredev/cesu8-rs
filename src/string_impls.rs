@@ -1,8 +1,9 @@
-use std::borrow::{Borrow};
+use std::borrow::{Borrow, Cow};
 use std::fmt;
 use std::cmp::Ordering;
 use std::ops::{Add, AddAssign};
 use std::hash::{Hash, Hasher};
+use crate::decoding::from_utf8_slice;
 use crate::{Cesu8Str, Variant};
 use crate::encoding::utf8err_inc;
 
@@ -161,26 +162,33 @@ impl<'s> Borrow<[u8]> for Cesu8Str<'s> {
 impl<'s> fmt::Debug for Cesu8Str<'s> {
     /// Display a debug representation of the string, escaping non-ascii characters to hex
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        const DEBUG_LIBRARY: bool = false;
+
         // could use from_utf8_unchecked here safely
-        let pretty = String::from_utf8(
-            self.bytes.iter().copied()
-                // leaves ascii as is, uses \t, \n, or \xNN as fallback for unknown/unicode
-                .flat_map(std::ascii::escape_default)
-                .collect()
-        ).expect("flat_map output did not return stringable text");
-
-        struct DisplayToDebug<T: fmt::Display>(T);
-        impl<T: fmt::Display> fmt::Debug for DisplayToDebug<T> {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                fmt::Display::fmt(&self.0, f)
+        let pretty: Cow<str> = match self.utf8_error() {
+            Ok(()) if !DEBUG_LIBRARY => {
+                from_utf8_slice(&self.bytes, "badly tracked UTF-8").into()
+            },
+            _ => {
+                String::from_utf8(
+                    self.bytes.iter().copied()
+                        // leaves ascii as is, uses \t, \n, or \xNN as fallback for unknown/unicode
+                        .flat_map(std::ascii::escape_default)
+                        .collect()
+                ).expect("flat_map output did not return stringable text")
+                .into()
             }
-        }
+        };
 
-        f.debug_struct("Cesu8Str")
-            .field("variant", &self.variant)
-            .field("first_utf8_error", &self.utf8_error)
-            .field("bytes", &DisplayToDebug(pretty))
-            .finish()
+        if DEBUG_LIBRARY {
+            f.debug_struct("Cesu8Str")
+                .field("variant", &self.variant)
+                .field("first_utf8_error", &self.utf8_error)
+                .field("bytes", &pretty)
+                .finish()
+        } else {
+            write!(f, "{:?}", pretty)
+        }
     }
 }
 
