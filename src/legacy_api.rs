@@ -7,7 +7,7 @@ use crate::{Cesu8Error, Cesu8Str, Variant};
 ///
 /// ```
 /// use std::borrow::Cow;
-/// use cesu8::from_cesu8;
+/// use cesu8str::from_cesu8;
 ///
 /// // This string is valid as UTF-8 or CESU-8, so it doesn't change,
 /// // and we can convert it without allocating memory.
@@ -31,7 +31,7 @@ pub fn from_cesu8(bytes: &[u8]) -> Result<Cow<str>, Cesu8Error> {
 ///
 /// ```
 /// use std::borrow::Cow;
-/// use cesu8::from_java_cesu8;
+/// use cesu8str::from_java_cesu8;
 ///
 /// // This string is valid as UTF-8 or modified UTF-8, so it doesn't change,
 /// // and we can convert it without allocating memory.
@@ -83,7 +83,7 @@ fn test_from_cesu8() {
 ///
 /// ```
 /// use std::borrow::Cow;
-/// use cesu8::to_cesu8;
+/// use cesu8str::to_cesu8;
 ///
 /// // This string is valid as UTF-8 or CESU-8, so it doesn't change,
 /// // and we can convert it without allocating memory.
@@ -102,7 +102,7 @@ pub fn to_cesu8(text: &str) -> Cow<[u8]> {
 ///
 /// ```
 /// use std::borrow::Cow;
-/// use cesu8::to_java_cesu8;
+/// use cesu8str::to_java_cesu8;
 ///
 /// // This string is valid as UTF-8 or CESU-8, so it doesn't change,
 /// // and we can convert it without allocating memory.

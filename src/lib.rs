@@ -1,4 +1,7 @@
-// Copyright 2012-2014 The Rust Project Developers and Eric Kidd.  See the
+#![allow(clippy::let_unit_value)]
+#![allow(clippy::unit_arg)]
+#![warn(missing_docs)]
+// Copyright 2012-2022 The Rust Project Developers and Eric Kidd and Christopher Moore.  See the
 // COPYRIGHT-RUST.txt file at the top-level directory of this distribution.
 //
 // Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
@@ -20,7 +23,7 @@
 //!
 //! ```
 //! use std::borrow::Cow;
-//! use cesu8::{Cesu8Str, Variant};
+//! use cesu8str::{Cesu8Str, Variant};
 //!
 //! // 16-bit Unicode characters are the same in UTF-8 and CESU-8.
 //! assert_eq!("aé日".as_bytes(), Cesu8Str::from_utf8("aé日", Variant::Standard).as_bytes());

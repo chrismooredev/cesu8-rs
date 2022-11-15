@@ -111,7 +111,7 @@ fn real_main() -> i32 {
 		return 1;
 	}
 
-	let output_json = if let Some(i) = opts.iter().position(|s| &*s == "--json") {
+	let output_json = if let Some(i) = opts.iter().position(|s| s == "--json") {
 		let _ = opts.remove(i).unwrap();
 		true
 	} else {

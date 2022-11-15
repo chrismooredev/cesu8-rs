@@ -4,7 +4,7 @@ use std::fs::File;
 use std::ffi::OsString;
 use std::borrow::Cow;
 
-use cesu8::{Cesu8Str, Variant};
+use cesu8str::{Cesu8Str, Variant};
 use clap::Clap;
 
 const HELP_TEXT: &str = "Converts files or standard IO streams between standard UTF8 and CESU8, or the JVM's modified UTF-8.
@@ -68,10 +68,8 @@ fn real_main() -> i32 {
                 }
             };
             Box::new(file)
-        },
-        _ => {
-            Box::new(h_stdin.lock())
         }
+        _ => Box::new(h_stdin.lock()),
     };
     
     let mut output: Box<dyn Write> = match opts.output {
@@ -86,10 +84,8 @@ fn real_main() -> i32 {
                 }
             };
             Box::new(file)
-        },
-        _ => {
-            Box::new(h_stdout.lock())
         }
+        _ => Box::new(h_stdout.lock()),
     };
 
     let variant = match opts.java {

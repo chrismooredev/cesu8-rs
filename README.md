@@ -1,12 +1,10 @@
 # CESU-8 encoder/decoder for Rust
 
-[![Build Status](https://travis-ci.org/emk/cesu8-rs.svg)](https://travis-ci.org/emk/cesu8-rs) [![Latest version](https://img.shields.io/crates/v/cesu8.svg)](https://crates.io/crates/cesu8) [![License](https://img.shields.io/crates/l/cesu8.svg)](https://crates.io/crates/cesu8)
+[![Crates.io][crates-badge]][crates-url]
+[![Docs.rs][docs-badge]][docs-url]
+[![Build Status][actions-badge]][actions-url]
 
-[Documentation][apidoc].
-
-[apidoc]: http://emk.github.io/cesu8-rs/cesu8/index.html
-
-Convert between ordinary UTF-8 and [CESU-8][] encodings.
+Convert between ordinary UTF-8 and CESU-8 ([Wikipedia][wikipedia-cesu8], [Unicode Consortium][unicode-cesu8]) encodings.
 
 CESU-8 encodes characters outside the Basic Multilingual Plane as two
 UTF-16 surrogate chacaters, which are then further re-encoded as invalid,
@@ -20,11 +18,8 @@ This encoding is sometimes needed when working with Java, Oracle or MySQL,
 and when trying to store emoji, hieroglyphs, or other characters on the
 Supplementary Multilingual Plane or the Supplementary Ideographic Plane.
 
-We also support Java's [Modified UTF-8][] encoding, which encodes `\0`
+We also support Java's [Modified UTF-8][wikipedia-mutf8] encoding, which encodes `\0`
 using a multi-byte UTF-8 sequence.
-
-[CESU-8]: http://www.unicode.org/reports/tr26/tr26-2.html
-[Modified UTF-8]: https://en.wikipedia.org/wiki/UTF-8#Modified_UTF-8
 
 ## License
 
@@ -35,3 +30,12 @@ Developers and individual Rust contributors, as described in that file.
 The new code in this project is distributed under the same terms.
 
 [str.rs]: https://github.com/rust-lang/rust/blob/master/src/libcore/str.rs
+[crates-badge]: https://img.shields.io/crates/v/cesu8str.svg
+[crates-url]: https://crates.io/crates/cesu8str
+[docs-badge]: https://img.shields.io/badge/docs.rs-cesu8str?logo=docs.rs
+[docs-url]: https://docs.io/cesu8str
+[actions-badge]: https://github.com/chrismooredev/cesu8str/workflows/CI/badge.svg
+[actions-url]: https://github.com/chrismooredev/cesu8str/actions?query=workflow%3ACI+branch%3Amaster
+[wikipedia-cesu8]: https://en.wikipedia.org/wiki/CESU-8
+[wikipedia-mutf8]: https://en.wikipedia.org/wiki/UTF-8#Modified_UTF-8
+[unicode-cesu8]: https://www.unicode.org/reports/tr26/tr26-2.html

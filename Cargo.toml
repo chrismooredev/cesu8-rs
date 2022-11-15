@@ -1,16 +1,15 @@
 [package]
-
-name = "cesu8"
-version = "1.2.0"
-authors = ["Eric Kidd <git@randomhacks.net>", "Chris Moore <git@chrismoore.dev>"]
+name = "cesu8str"
+version = "0.1.0"
+authors = ["Chris Moore <git@chrismoore.dev>", "Eric Kidd <git@randomhacks.net>"]
 edition = "2018"
 
 description = "Convert to and from CESU-8 encoding (similar to UTF-8)"
 license = "Apache-2.0/MIT"
 readme = "README.md"
 
-repository = "https://github.com/emk/cesu8-rs"
-documentation = "http://emk.github.io/cesu8-rs/cesu8/index.html"
+repository = "https://github.com/chrismooredev/cesu8-rs"
+documentation = "https://docs.rs/cesu8str"
 
 [dependencies]
 clap = { version = "=3.0.0-beta.4", optional = true }
@@ -23,7 +22,7 @@ unstable = []
 build-binary = ["clap"]
 
 [[bin]]
-name = "cesu8"
+name = "cesu8str"
 required-features = ["build-binary"]
 
 [[bin]]

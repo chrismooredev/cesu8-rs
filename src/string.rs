@@ -94,7 +94,7 @@ impl<'s> Cesu8Str<'s> {
     /// ### Valid CESU-8, Valid UTF-8, Valid ascii
     /// ```
     /// # use std::str::from_utf8;
-    /// # use cesu8::{Cesu8Str, Variant};
+    /// # use cesu8str::{Cesu8Str, Variant};
     /// const ASCII: &[u8] = b"normal ascii string";
     /// let as_cesu8 = Cesu8Str::from_cesu8(ASCII, Variant::Standard).unwrap();
     /// 
@@ -106,7 +106,7 @@ impl<'s> Cesu8Str<'s> {
     /// ### Valid CESU-8, Invalid UTF-8
     /// ```
     /// # use std::str::from_utf8;
-    /// # use cesu8::{Cesu8Str, Variant};
+    /// # use cesu8str::{Cesu8Str, Variant};
     /// const VALID_CESU8: &[u8] = b"with embedded \xC0\x80 null";
     /// let as_cesu8 = Cesu8Str::from_cesu8(VALID_CESU8, Variant::Java).unwrap();
     /// 
@@ -120,7 +120,7 @@ impl<'s> Cesu8Str<'s> {
     /// ### Invalid CESU-8, Invalid UTF-8
     /// ```
     /// # use std::str::from_utf8;
-    /// # use cesu8::{Cesu8Str, Variant};
+    /// # use cesu8str::{Cesu8Str, Variant};
     /// const INVALID_CESU8: &[u8] = b"with embedded \xC0\x80 null"; // is valid Java variant, but test with Standard so it's invalid
     /// let as_cesu8_err = Cesu8Str::from_cesu8(INVALID_CESU8, Variant::Standard).unwrap_err();
     /// assert_eq!(14, as_cesu8_err.valid_up_to());
@@ -137,7 +137,7 @@ impl<'s> Cesu8Str<'s> {
     /// ### Invalid CESU-8, Valid UTF-8
     /// ```
     /// # use std::str::from_utf8;
-    /// # use cesu8::{Cesu8Str, Variant};
+    /// # use cesu8str::{Cesu8Str, Variant};
     /// const VALID_UTF8: &str = "with literal \0 null";
     /// let as_cesu8_err = Cesu8Str::from_cesu8(VALID_UTF8.as_bytes(), Variant::Java).unwrap_err();
     /// 
@@ -270,8 +270,8 @@ impl<'s> Cesu8Str<'s> {
     ///
     /// ```
     /// # use std::borrow::Cow;
-    /// # use cesu8::{Cesu8Str, Variant};
-    /// 
+    /// # use cesu8str::{Cesu8Str, Variant};
+    ///
     /// // Encode a UTF-8 str (that is also valid CESU-8) into CESU-8 without allocating
     /// let to_encode = "my string (valid CESU8)";
     /// let as_cesu8 = Cesu8Str::from_utf8(to_encode, Variant::Standard);
@@ -359,11 +359,13 @@ impl<'s> Cesu8Str<'s> {
                 target.write_all(text.as_bytes())?
             },
             Err(e) => {
-                // SAFETY: `ensure_good` parameter is provided by a CESU-8 decoding error, and is valid
-                let _utf8_err = unsafe { encoding::utf8_to_cesu8::<W>(text, e.valid_up_to(), target, variant)? };
+                let _utf8_res: Result<(), _> = unsafe {
+                    // SAFETY: `ensure_good` parameter is provided by a CESU-8 decoding error, and is valid
+                    encoding::utf8_to_cesu8::<W>(text, e.valid_up_to(), target, variant)?
+                };
+                _utf8_res.map_err(|e| io::Error::new(ErrorKind::Other, e))?
             }
         };
-
         Ok(())
     }
 
@@ -376,8 +378,11 @@ impl<'s> Cesu8Str<'s> {
     pub fn as_str(&self) -> Result<&str, Utf8Error> {
         // borrowed -> borrowed
 
-        let () = self.utf8_error?;
-        Ok(from_utf8_slice(&self.bytes, "utf8_err was not updated/set correctly"))
+        self.utf8_error?; // return early if not valid utf8
+        Ok(from_utf8_slice(
+            &self.bytes,
+            "utf8_err was not updated/set correctly",
+        ))
     }
 
     /// Returns the CESU-8 string as a UTF-8 string, may allocate.

@@ -78,13 +78,13 @@ impl Cesu8Error {
     /// Basic usage:
     ///
     /// ```
-    /// use cesu8::{Cesu8Str, Variant};
+    /// use cesu8str::{Cesu8Str, Variant};
     ///
     /// // some invalid bytes, in a byte string
     /// // the '\xC0' is the first half to an embedded Java-style nul sequence
     /// let sparkle_heart: &[u8] = b"my \xC0 string";
     ///
-    /// // cesu8::Cesu8Str::from_cesu8 returns a Cesu8Error
+    /// // cesu8str::Cesu8Str::from_cesu8 returns a Cesu8Error
     /// let error = Cesu8Str::from_cesu8(&sparkle_heart, Variant::Java).unwrap_err();
     ///
     /// // the third byte is invalid here, the error is 1 byte long
