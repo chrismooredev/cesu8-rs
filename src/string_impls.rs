@@ -1,15 +1,14 @@
-use std::borrow::{Borrow, Cow};
-use std::fmt;
-use std::cmp::Ordering;
-use std::ops::{Add, AddAssign};
-use std::hash::{Hash, Hasher};
 use crate::decoding::from_utf8_slice;
-use crate::{Cesu8Str, Variant};
 use crate::encoding::utf8err_inc;
+use crate::{Cesu8Str, Variant};
+use std::borrow::{Borrow, Cow};
+use std::cmp::Ordering;
+use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::ops::{Add, AddAssign};
 
 /// Used for equality/hashing across variants so bytes will be the same
 const COMMON_VARIANT: Variant = Variant::Standard;
-
 
 impl<'cs, 'us> Add<&'us Cesu8Str<'us>> for Cesu8Str<'cs> {
     type Output = Cesu8Str<'cs>;
@@ -29,16 +28,17 @@ impl<'cs, 'us> Add<&'us str> for Cesu8Str<'cs> {
 impl<'cs, 'us> AddAssign<&'us Cesu8Str<'us>> for Cesu8Str<'cs> {
     fn add_assign(&mut self, rhs: &'us Cesu8Str<'us>) {
         let old_len = self.bytes.len();
-        
+
         let text = rhs.to_variant(self.variant);
         self.bytes.to_mut().extend_from_slice(text.as_bytes());
 
         match (self.utf8_error, text.utf8_error) {
-            (Err(_), _) => { /* There is a UTF-8 error before appending the other string, ignore */ }
-            (Ok(()), Ok(())) => { /* Both are valid UTF-8, no need to change cached error */ },
+            (Err(_), _) => { /* There is a UTF-8 error before appending the other string, ignore */
+            }
+            (Ok(()), Ok(())) => { /* Both are valid UTF-8, no need to change cached error */ }
             (Ok(()), Err(e)) => {
                 self.utf8_error = Err(utf8err_inc(&e, old_len));
-            },
+            }
         }
     }
 }
@@ -48,12 +48,13 @@ impl<'cs, 'us> AddAssign<&'us str> for Cesu8Str<'cs> {
         let bytes: &mut Vec<u8> = self.bytes.to_mut();
 
         match crate::encoding::utf8_to_cesu8_safe(text, bytes, self.variant) {
-            Ok(()) => { /* Introduced no UTF-8 errors, leave error as is */ },
+            Ok(()) => { /* Introduced no UTF-8 errors, leave error as is */ }
             Err(e) if self.utf8_error.is_ok() => {
                 // There was an error in our new chunk, none in our own
                 self.utf8_error = Err(utf8err_inc(&e, old_len));
-            },
-            Err(_) => { /* Introduced a UTF-8 error, but one preceded it, so this one is irrelavent */ }
+            }
+            Err(_) => { /* Introduced a UTF-8 error, but one preceded it, so this one is irrelavent */
+            }
         }
     }
 }
@@ -85,11 +86,19 @@ impl PartialEq<Cesu8Str<'_>> for &str {
         other.eq(*self)
     }
 }
-impl<'a> PartialEq<&'a str> for Cesu8Str<'_> { fn eq(&self, other: &&'a str) -> bool { *self == **other } }
-impl PartialEq<&Cesu8Str<'_>> for &str { fn eq(&self, other: &&Cesu8Str<'_>) -> bool { *self == **other } }
+impl<'a> PartialEq<&'a str> for Cesu8Str<'_> {
+    fn eq(&self, other: &&'a str) -> bool {
+        *self == **other
+    }
+}
+impl PartialEq<&Cesu8Str<'_>> for &str {
+    fn eq(&self, other: &&Cesu8Str<'_>) -> bool {
+        *self == **other
+    }
+}
 
 impl<'s> PartialOrd<Cesu8Str<'_>> for Cesu8Str<'s> {
-    fn partial_cmp(&self, other: &Cesu8Str<'_>) -> Option<Ordering> {  
+    fn partial_cmp(&self, other: &Cesu8Str<'_>) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
@@ -104,7 +113,7 @@ impl<'s> Ord for Cesu8Str<'s> {
         if self.variant == other.variant {
             return self.bytes.cmp(&other.bytes);
         }
-        
+
         let mut sbi = self.bytes.iter().copied();
         let mut obi = other.bytes.iter().copied();
 
@@ -118,8 +127,8 @@ impl<'s> Ord for Cesu8Str<'s> {
                         let _80 = i.next();
                         debug_assert_eq!(_80, Some(0x80));
                         Some(0x00)
-                    },
-                    Some(o) => Some(o)
+                    }
+                    Some(o) => Some(o),
                 }
             }
 
@@ -127,7 +136,7 @@ impl<'s> Ord for Cesu8Str<'s> {
             let ob = from_iter(other.variant, &mut obi);
 
             match sb.cmp(&ob) {
-                Ordering::Equal => {},
+                Ordering::Equal => {}
                 ord => return ord,
             }
         }
@@ -166,16 +175,17 @@ impl<'s> fmt::Debug for Cesu8Str<'s> {
 
         // could use from_utf8_unchecked here safely
         let pretty: Cow<str> = match self.utf8_error() {
-            Ok(()) if !DEBUG_LIBRARY => {
-                from_utf8_slice(&self.bytes, "badly tracked UTF-8").into()
-            },
+            Ok(()) if !DEBUG_LIBRARY => from_utf8_slice(&self.bytes, "badly tracked UTF-8").into(),
             _ => {
                 String::from_utf8(
-                    self.bytes.iter().copied()
+                    self.bytes
+                        .iter()
+                        .copied()
                         // leaves ascii as is, uses \t, \n, or \xNN as fallback for unknown/unicode
                         .flat_map(std::ascii::escape_default)
-                        .collect()
-                ).expect("flat_map output did not return stringable text")
+                        .collect(),
+                )
+                .expect("flat_map output did not return stringable text")
                 .into()
             }
         };
@@ -216,7 +226,7 @@ fn eq_across_variants() {
     let reference = "begin\0end";
     let cesu_nul = Cesu8Str::from_utf8(reference, Variant::Standard);
     let mutf_nul = Cesu8Str::from_utf8(reference, Variant::Java);
-    
+
     // while the bytes should be different, they should still be equilavent
     assert_ne!(cesu_nul.as_bytes(), mutf_nul.as_bytes());
     assert_eq!(cesu_nul, mutf_nul);
@@ -234,5 +244,8 @@ fn add_strings() {
     addassign += "**basic string";
     addassign += &Cesu8Str::from_utf8("**owned\0cesu", Variant::Java); // add a Java variant to a standard string
 
-    assert_eq!(addassign.as_bytes(), b"begin\0end**basic string**owned\0cesu");
+    assert_eq!(
+        addassign.as_bytes(),
+        b"begin\0end**basic string**owned\0cesu"
+    );
 }

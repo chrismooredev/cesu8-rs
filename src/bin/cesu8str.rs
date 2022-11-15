@@ -1,8 +1,7 @@
-
-use std::io::{ErrorKind, Read, Write};
-use std::fs::File;
-use std::ffi::OsString;
 use std::borrow::Cow;
+use std::ffi::OsString;
+use std::fs::File;
+use std::io::{ErrorKind, Read, Write};
 
 use cesu8str::{Cesu8Str, Variant};
 use clap::Clap;
@@ -31,7 +30,6 @@ struct Opts {
     input: Option<OsString>,
     /// The output file. Defaults to stdout if '-' or not set
     output: Option<OsString>,
-
     // #[clap(short, long, default_value = "4096")]
     // chunk: usize,
 }
@@ -52,7 +50,6 @@ fn real_main() -> i32 {
     // take input in a loop, output it
     // if either input or output is closed unexpectedly, exit gracefully (instead of panickreturning a pipe error or something)
 
-
     let h_stdin = std::io::stdin();
     let h_stdout = std::io::stdout();
 
@@ -71,7 +68,7 @@ fn real_main() -> i32 {
         }
         _ => Box::new(h_stdin.lock()),
     };
-    
+
     let mut output: Box<dyn Write> = match opts.output {
         Some(file) if file.to_str() != Some("-") => {
             // we are a custom file, also not "-"
@@ -93,12 +90,22 @@ fn real_main() -> i32 {
         true => Variant::Java,
     };
 
-    read_write_loop(4096 /* opts.chunk */, !opts.decode, variant, &mut input, &mut output)
-
+    read_write_loop(
+        4096, /* opts.chunk */
+        !opts.decode,
+        variant,
+        &mut input,
+        &mut output,
+    )
 }
 
-fn read_write_loop(buf_size: usize, encode: bool, variant: Variant, input: &mut dyn Read, output: &mut dyn Write) -> i32 {
-    
+fn read_write_loop(
+    buf_size: usize,
+    encode: bool,
+    variant: Variant,
+    input: &mut dyn Read,
+    output: &mut dyn Write,
+) -> i32 {
     let debug_output = std::env::var("CESU_DEBUG").is_ok();
 
     macro_rules! debugln {
@@ -119,11 +126,15 @@ fn read_write_loop(buf_size: usize, encode: bool, variant: Variant, input: &mut 
     let mut input_done = false;
     let mut io_error = false;
     let mut bad_encoding = false;
-    
+
     loop {
         // move existing buffer to start of slice
         if start != 0 {
-            debugln!("moving buffer from {:?} to {:?}", start..end, 0..(end - start));
+            debugln!(
+                "moving buffer from {:?} to {:?}",
+                start..end,
+                0..(end - start)
+            );
 
             buf.copy_within(start..end, 0);
             end -= start;
@@ -135,25 +146,25 @@ fn read_write_loop(buf_size: usize, encode: bool, variant: Variant, input: &mut 
         }
 
         // if we have over 3/4s of a buffer to fill, fill the buffer
-        if !input_done && end <= buf.len()/4 {
+        if !input_done && end <= buf.len() / 4 {
             match input.read(&mut buf[end..]) {
                 Ok(0) => {
                     input_done = true;
-                },
+                }
                 Ok(n) => {
-                    debugln!("read input; end += n, ({} += {}) = {}", end, n, end+n);
-                    debug_assert!(end+n <= buf.len(), "read more than the buffer can hold");
+                    debugln!("read input; end += n, ({} += {}) = {}", end, n, end + n);
+                    debug_assert!(end + n <= buf.len(), "read more than the buffer can hold");
                     end += n;
-                },
+                }
                 Err(e) if e.kind() == ErrorKind::BrokenPipe => {
                     // BrokenPipe is "expected", just treat as EOF
                     input_done = true;
-                },
+                }
                 Err(e) => {
                     eprintln!("input error: {}", e);
                     io_error = true;
                     input_done = true;
-                },
+                }
             }
         }
 
@@ -196,15 +207,23 @@ fn read_write_loop(buf_size: usize, encode: bool, variant: Variant, input: &mut 
             match err {
                 None => {
                     // we've consumed all of it
-                    debugln!("no error on chunk 0x{:x}..0x{:x}", absolute_start, absolute_start+end);
+                    debugln!(
+                        "no error on chunk 0x{:x}..0x{:x}",
+                        absolute_start,
+                        absolute_start + end
+                    );
                     start = end;
                     absolute_start += end;
-                },
+                }
                 Some((n, None)) => {
                     // there was an error that could be solved with more data
                     // "consume" n bytes
 
-                    debugln!("need more bytes to continue from 0x{:x} (0x{:x} left)", absolute_start+n, end-n);
+                    debugln!(
+                        "need more bytes to continue from 0x{:x} (0x{:x} left)",
+                        absolute_start + n,
+                        end - n
+                    );
 
                     start = n;
                     absolute_start += n;
@@ -214,33 +233,47 @@ fn read_write_loop(buf_size: usize, encode: bool, variant: Variant, input: &mut 
                         bad_encoding = true;
                         break;
                     }
-                },
+                }
                 Some((n, Some(el))) => {
                     // there was an error in the byte encoding
-                    
+
                     let enc = if encode { "utf-8" } else { "cesu-8" };
-                    eprintln!("input error: invalid {} sequence of {} bytes from index {} (or 0x{:X})", enc, el, absolute_start+n, absolute_start+n);
-                    debugln!("-> abs_start+n  ::  {}+{}={} :: 0x{:X}+0x{:X}=0x{:X}", absolute_start, n, absolute_start+n, absolute_start, n, absolute_start+n);
+                    eprintln!(
+                        "input error: invalid {} sequence of {} bytes from index {} (or 0x{:X})",
+                        enc,
+                        el,
+                        absolute_start + n,
+                        absolute_start + n
+                    );
+                    debugln!(
+                        "-> abs_start+n  ::  {}+{}={} :: 0x{:X}+0x{:X}=0x{:X}",
+                        absolute_start,
+                        n,
+                        absolute_start + n,
+                        absolute_start,
+                        n,
+                        absolute_start + n
+                    );
                     debugln!("-> (start..end) = {:?}", start..end);
-                    let portion = &buf[n.saturating_sub(4)..(n+el+4).min(end)];
+                    let portion = &buf[n.saturating_sub(4)..(n + el + 4).min(end)];
                     debugln!("-> erroring portion (4 byte context): {:x?}", portion);
 
                     start = n;
                     absolute_start += n;
 
                     end = n; // skip past erroring data
-                    
+
                     bad_encoding = true;
                     input_done = true;
                 }
             }
 
             match output.write_all(&data) {
-                Ok(()) => {},
+                Ok(()) => {}
                 Err(e) if e.kind() == ErrorKind::BrokenPipe => {
                     // stop procesing - we can't do any more
                     break;
-                },
+                }
                 Err(e) => {
                     eprintln!("output error: {}", e);
                     io_error = true;

@@ -2,30 +2,37 @@ use std::borrow::Cow;
 use std::io;
 use std::str::Utf8Error;
 
-use crate::Variant;
+use crate::decoding;
 use crate::decoding::from_utf8_slice;
 use crate::decoding::from_utf8_vec;
 use crate::encoding;
-use crate::decoding;
-use crate::Cesu8Error;
+#[cfg(test)]
+use crate::encoding::enc_surrogates;
 use crate::encoding::utf8err_inc;
-#[cfg(test)] use crate::encoding::enc_surrogates;
-#[cfg(test)] use crate::encoding::utf8err_new;
+#[cfg(test)]
+use crate::encoding::utf8err_new;
+use crate::Cesu8Error;
+use crate::Variant;
 
 const UTF8_REPLACEMENT_CHAR: &[u8] = "\u{FFFD}".as_bytes();
 #[test]
 fn valid_replacement_char() {
     let mut buf = [0; 4];
-    let as_bytes = std::char::REPLACEMENT_CHARACTER.encode_utf8(&mut buf).as_bytes();
-    assert_eq!(as_bytes, UTF8_REPLACEMENT_CHAR, "internal UTF8_REPLACEMENT_CHAR differs from the standard library");
+    let as_bytes = std::char::REPLACEMENT_CHARACTER
+        .encode_utf8(&mut buf)
+        .as_bytes();
+    assert_eq!(
+        as_bytes, UTF8_REPLACEMENT_CHAR,
+        "internal UTF8_REPLACEMENT_CHAR differs from the standard library"
+    );
 }
 
 /// A CESU-8 or Modified UTF-8 string.
-/// 
+///
 /// The main difference between a CESU-8/MUTF-8 string and a regular UTF-8 string is
 /// in handling of 4-byte long (in UTF-8) characters. For CESU-8/MUTF-8, these characters
 /// are instead encoded as two, three-byte long UTF-16 characters.
-/// 
+///
 /// CESU-8 and MUTF-8 strings are encoded the same, except that MUTF-8 strings, as used by
 /// the JVM and JNI applications, encode a nul byte (hex `00`) as a UTF-8 2-byte zero
 /// character (hex `C0 80`)
@@ -47,7 +54,7 @@ impl<'s> Cesu8Str<'s> {
     }
 
     /// If the string is invalid UTF-8, this returns the UTF-8 error that would occur, given `str::from_utf8(cesu8.as_bytes()).unwrap_err()`
-    /// 
+    ///
     /// # Examples
     /// * Example 1: A valid UTF8/Ascii string
     /// ```
@@ -87,7 +94,7 @@ impl<'s> Cesu8Str<'s> {
             bytes: Cow::Owned(owned),
         }
     }
-    
+
     /// Validates a sequence of bytes as CESU8, will not allocate.
     ///
     /// # Examples
@@ -97,26 +104,26 @@ impl<'s> Cesu8Str<'s> {
     /// # use cesu8str::{Cesu8Str, Variant};
     /// const ASCII: &[u8] = b"normal ascii string";
     /// let as_cesu8 = Cesu8Str::from_cesu8(ASCII, Variant::Standard).unwrap();
-    /// 
+    ///
     /// // There were no UTF-8 errors within the string
     /// assert_eq!(from_utf8(ASCII).map(|_| ()), as_cesu8.utf8_error());
     /// assert_eq!(as_cesu8.utf8_error(), Ok(()));
     /// ```
-    /// 
+    ///
     /// ### Valid CESU-8, Invalid UTF-8
     /// ```
     /// # use std::str::from_utf8;
     /// # use cesu8str::{Cesu8Str, Variant};
     /// const VALID_CESU8: &[u8] = b"with embedded \xC0\x80 null";
     /// let as_cesu8 = Cesu8Str::from_cesu8(VALID_CESU8, Variant::Java).unwrap();
-    /// 
+    ///
     /// // It's not valid UTF-8, check the utf8_error
     /// assert_eq!(from_utf8(VALID_CESU8).map(|_| ()), as_cesu8.utf8_error());
     /// let utf8_err = as_cesu8.utf8_error().unwrap_err();
     /// assert_eq!(14, utf8_err.valid_up_to());
     /// assert_eq!(Some(1), utf8_err.error_len());
     /// ```
-    /// 
+    ///
     /// ### Invalid CESU-8, Invalid UTF-8
     /// ```
     /// # use std::str::from_utf8;
@@ -125,22 +132,22 @@ impl<'s> Cesu8Str<'s> {
     /// let as_cesu8_err = Cesu8Str::from_cesu8(INVALID_CESU8, Variant::Standard).unwrap_err();
     /// assert_eq!(14, as_cesu8_err.valid_up_to());
     /// assert_eq!(from_utf8(INVALID_CESU8).map(|_| ()), as_cesu8_err.utf8_error());
-    /// 
-    /// 
+    ///
+    ///
     /// let valid = &INVALID_CESU8[..as_cesu8_err.valid_up_to()];
     /// let as_cesu8 = Cesu8Str::from_cesu8(valid, Variant::Standard).unwrap();
     /// assert_eq!(from_utf8(valid).map(|_| ()), as_cesu8.utf8_error());
     /// assert_eq!(Ok(()), as_cesu8.utf8_error());
-    /// 
+    ///
     /// ```
-    /// 
+    ///
     /// ### Invalid CESU-8, Valid UTF-8
     /// ```
     /// # use std::str::from_utf8;
     /// # use cesu8str::{Cesu8Str, Variant};
     /// const VALID_UTF8: &str = "with literal \0 null";
     /// let as_cesu8_err = Cesu8Str::from_cesu8(VALID_UTF8.as_bytes(), Variant::Java).unwrap_err();
-    /// 
+    ///
     /// assert_eq!(std::str::from_utf8(VALID_UTF8.as_bytes()).map(|_| ()), as_cesu8_err.utf8_error());
     /// ```
     pub fn from_cesu8(bytes: &[u8], variant: Variant) -> Result<Cesu8Str<'_>, Cesu8Error> {
@@ -176,11 +183,13 @@ impl<'s> Cesu8Str<'s> {
             // " CESU UTF4 " // Err(valid_up_to = UTF4)
             // " UTF4 CESU " // Err(valid_up_to = UTF4)
             let res = Cesu8Str::from_cesu8(&bytes[i..], variant);
-            
-            if i == 0 { // this is the first/only chunk
+
+            if i == 0 {
+                // this is the first/only chunk
                 match res {
                     Ok(s) => return s, // whole string is valid, return as-is
-                    Err(_) => { // pre-allocate buffer
+                    Err(_) => {
+                        // pre-allocate buffer
                         assert!(buf.is_empty(), "buffer was not empty on first iteration");
                         buf = Vec::with_capacity(bytes.len());
                     }
@@ -191,18 +200,28 @@ impl<'s> Cesu8Str<'s> {
             // need to mark only for valid CESU-8 sequences - any invalid UTF-8 sequences will be replaced
             match (utf8_err, &res) {
                 // no other UTF-8 error, and first UTF-8 error caused by valid CESU-8
-                (Ok(()), Ok(Cesu8Str { utf8_error: Err(se), .. })) => {
+                (
+                    Ok(()),
+                    Ok(Cesu8Str {
+                        utf8_error: Err(se),
+                        ..
+                    }),
+                ) => {
                     utf8_err = Err(utf8err_inc(se, i));
-                },
+                }
 
                 // we found invalid UTF-8 within a valid CESU-8 chunk (and it's the first UTF-8 error)
-                (Ok(()), Err(Cesu8Error { valid_up_to, utf8_error: Err(se), ..}))
-                if *valid_up_to != se.valid_up_to() => {
-                    utf8_err = Err(utf8err_inc(se, i))
-                },
+                (
+                    Ok(()),
+                    Err(Cesu8Error {
+                        valid_up_to,
+                        utf8_error: Err(se),
+                        ..
+                    }),
+                ) if *valid_up_to != se.valid_up_to() => utf8_err = Err(utf8err_inc(se, i)),
 
-                
-                (_, _) => { /* ignore if we already have a UTF-8 error, or the UTF-8 error occurs in the same spot as the CESU-8 error */},
+                (_, _) => { /* ignore if we already have a UTF-8 error, or the UTF-8 error occurs in the same spot as the CESU-8 error */
+                }
             }
 
             match res {
@@ -217,10 +236,10 @@ impl<'s> Cesu8Str<'s> {
                         utf8_error: utf8_err,
                         bytes: Cow::Owned(buf),
                     };
-                },
+                }
                 Err(e) => {
                     // push valid part of string + replacement
-                    buf.extend_from_slice(&bytes[i..i+e.valid_up_to()]);
+                    buf.extend_from_slice(&bytes[i..i + e.valid_up_to()]);
                     buf.extend_from_slice(UTF8_REPLACEMENT_CHAR);
 
                     match e.error_len() {
@@ -231,7 +250,7 @@ impl<'s> Cesu8Str<'s> {
                                 utf8_error: utf8_err,
                                 bytes: Cow::Owned(buf),
                             };
-                        },
+                        }
                         Some(n) => {
                             // skip past valid chunk + error
                             i += e.valid_up_to() + n;
@@ -244,7 +263,7 @@ impl<'s> Cesu8Str<'s> {
         Cesu8Str {
             variant,
             utf8_error: utf8_err,
-            bytes: Cow::Owned(buf)
+            bytes: Cow::Owned(buf),
         }
     }
 
@@ -276,12 +295,12 @@ impl<'s> Cesu8Str<'s> {
     /// let to_encode = "my string (valid CESU8)";
     /// let as_cesu8 = Cesu8Str::from_utf8(to_encode, Variant::Standard);
     /// assert!(matches!(as_cesu8.into_bytes(), Cow::Borrowed(_)));
-    /// 
+    ///
     /// // Encode a UTF-8 str into Java CESU-8. Will allocate since it has to encode the nul byte.
     /// let to_encode_java = "my string (not valid Java CESU8)\0";
     /// let as_jcesu8 = Cesu8Str::from_utf8(to_encode_java, Variant::Java);
     /// assert!(matches!(as_jcesu8.into_bytes(), Cow::Owned(_)));
-    /// 
+    ///
     /// // Encode an owned UTF-8 String into CESU-8. Will not allocate since the string is already owned.
     /// let to_encode = "my string (valid CESU8)".to_owned();
     /// let as_cesu8 = Cesu8Str::from_utf8(to_encode, Variant::Standard);
@@ -293,21 +312,23 @@ impl<'s> Cesu8Str<'s> {
         let text = text.into();
 
         match encoding::utf8_as_cesu8(Cow::Borrowed(&text), variant) {
-            Ok(c) => { // able to go without allocating
+            Ok(c) => {
+                // able to go without allocating
                 Cesu8Str {
                     variant,
                     utf8_error: c.utf8_error,
                     bytes: match text {
                         Cow::Borrowed(b) => Cow::Borrowed(b.as_bytes()),
                         Cow::Owned(v) => Cow::Owned(v.into_bytes()),
-                    }
+                    },
                 }
-            },
+            }
             Err(e) => {
                 let mut data = Vec::with_capacity(default_cesu8_capacity(text.len()));
 
                 // SAFETY: `assume_good` is valid, as we got it from a CESU-8 error above
-                let res = unsafe { encoding::utf8_to_cesu8(&text, e.valid_up_to(), &mut data, variant) };
+                let res =
+                    unsafe { encoding::utf8_to_cesu8(&text, e.valid_up_to(), &mut data, variant) };
 
                 let err = res.expect("Vec io::Write has unexpectedly errored");
 
@@ -324,21 +345,30 @@ impl<'s> Cesu8Str<'s> {
     ///
     /// See `Cesu8Str::from_utf8` for a version that will convert (and allocate if necessary)
     #[inline]
-    pub fn try_from_utf8<C: Into<Cow<'s, str>>>(text: C, variant: Variant) -> Result<Cesu8Str<'s>, Cesu8Error> {
+    pub fn try_from_utf8<C: Into<Cow<'s, str>>>(
+        text: C,
+        variant: Variant,
+    ) -> Result<Cesu8Str<'s>, Cesu8Error> {
         encoding::utf8_as_cesu8(text.into(), variant)
     }
 
     /// Creates a Cesu8Str into a provided buffer. Alternatively, the string could borrow from the original string if it is valid CESU8.
     ///
     /// May return an io::Error if there is not enough space in the provided buffer, in which case the buffer's contents is undefined.
-    pub fn from_utf8_inplace(text: &'s str, buf: &'s mut [u8], variant: Variant) -> io::Result<Cesu8Str<'s>> {
+    pub fn from_utf8_inplace(
+        text: &'s str,
+        buf: &'s mut [u8],
+        variant: Variant,
+    ) -> io::Result<Cesu8Str<'s>> {
         //eprintln!("[DEBUG] from_utf8_inplace(text = {:?}, buf.len() = {:?}, variant = {:?}", text, buf.len(), variant);
         Ok(match Cesu8Str::<'_>::try_from_utf8(text, variant) {
             Ok(c) => c, // able to go without allocating
             Err(e) => {
                 let mut cursor = io::Cursor::new(buf);
                 // SAFETY: `ensure_good` parameter is provided by a CESU-8 decoding error, and is thus valid
-                let err = unsafe { encoding::utf8_to_cesu8::<_>(text, e.valid_up_to(), &mut cursor, variant)? };
+                let err = unsafe {
+                    encoding::utf8_to_cesu8::<_>(text, e.valid_up_to(), &mut cursor, variant)?
+                };
                 let filled = cursor.position() as usize;
                 let buf = cursor.into_inner();
 
@@ -352,12 +382,16 @@ impl<'s> Cesu8Str<'s> {
     }
 
     /// Converts a UTF-8 string directly into the provided io::Write-capable object. This allows writing directly into a preallocated Vec or byte slice stored on the stack, for example.
-    pub fn from_utf8_writer<W: io::Write>(text: &str, target: &mut W, variant: Variant) -> io::Result<()> {
+    pub fn from_utf8_writer<W: io::Write>(
+        text: &str,
+        target: &mut W,
+        variant: Variant,
+    ) -> io::Result<()> {
         let () = match encoding::utf8_as_cesu8(text.into(), variant) {
             Ok(_) => {
                 // may or may not allocate depending on caller
                 target.write_all(text.as_bytes())?
-            },
+            }
             Err(e) => {
                 let _utf8_res: Result<(), _> = unsafe {
                     // SAFETY: `ensure_good` parameter is provided by a CESU-8 decoding error, and is valid
@@ -389,10 +423,13 @@ impl<'s> Cesu8Str<'s> {
     pub fn to_str(&self) -> Cow<'_, str> {
         // borrowed -> borrowed
         // borrowed -> owned
-        
+
         match self.utf8_error {
-            Ok(()) => Cow::Borrowed(from_utf8_slice(&self.bytes, "utf8_err was not updated/set correctly")),
-            Err(_) => Cow::Owned(decoding::cesu8_to_utf8(self))
+            Ok(()) => Cow::Borrowed(from_utf8_slice(
+                &self.bytes,
+                "utf8_err was not updated/set correctly",
+            )),
+            Err(_) => Cow::Owned(decoding::cesu8_to_utf8(self)),
         }
     }
 
@@ -406,8 +443,14 @@ impl<'s> Cesu8Str<'s> {
         } else {
             match self.bytes {
                 // Validate UTF8 on debug, skip validation on release
-                Cow::Owned(bytes) => Cow::Owned(from_utf8_vec(bytes, "utf8_err was not updated/set correctly")),
-                Cow::Borrowed(bytes) => Cow::Borrowed(from_utf8_slice(bytes, "utf8_err was not updated/set correctly")),
+                Cow::Owned(bytes) => Cow::Owned(from_utf8_vec(
+                    bytes,
+                    "utf8_err was not updated/set correctly",
+                )),
+                Cow::Borrowed(bytes) => Cow::Borrowed(from_utf8_slice(
+                    bytes,
+                    "utf8_err was not updated/set correctly",
+                )),
             }
         }
     }
@@ -437,13 +480,13 @@ impl<'s> Cesu8Str<'s> {
         } else {
             // TODO: make this a bit more efficient?
             // can specialize this logic if it shows to be a problem
-            
+
             Cesu8Str::from_utf8(self.to_str(), variant).into_owned()
         }
     }
 
     /// Returns a byte buffer of this CESU-8 string, converted to the specified variant with a null-terminator
-    /// 
+    ///
     /// Allocates if there is not enough capacity to store the terminator.
     pub fn into_bytes0(self, var: Variant) -> Vec<u8> {
         let cow_bytes = self.into_variant(var).into_bytes();
@@ -475,15 +518,32 @@ pub(crate) fn default_cesu8_capacity(text_len: usize) -> usize {
 fn test_encoded(variant: Variant, text: &str, expected: &[u8]) {
     // eprintln!("testing {:?} for variant {:?} as cesu8 from utf8", text, variant);
     let cesu8 = Cesu8Str::from_utf8(text, variant);
-    assert_eq!(expected, cesu8.as_bytes(), "[{:?} variant][{:?}] unable to properly encode to CESU-8", variant, text);
+    assert_eq!(
+        expected,
+        cesu8.as_bytes(),
+        "[{:?} variant][{:?}] unable to properly encode to CESU-8",
+        variant,
+        text
+    );
 
     // eprintln!("\tgetting utf8 error for expected");
     let utf8_err = std::str::from_utf8(expected).map(|_| ());
-    assert_eq!(utf8_err, cesu8.utf8_error, "[{:?} variant][{:?}] utf8_err invariant was not maintained (CESU-8 bytes: {:x?})", variant, text, cesu8.as_bytes());
-    
+    assert_eq!(
+        utf8_err,
+        cesu8.utf8_error,
+        "[{:?} variant][{:?}] utf8_err invariant was not maintained (CESU-8 bytes: {:x?})",
+        variant,
+        text,
+        cesu8.as_bytes()
+    );
+
     // eprintln!("\treencoding {:?} from cesu8 ({:?}) to utf8", text, expected);
     let utf8 = cesu8.to_str();
-    assert_eq!(text, utf8, "[{:?} variant][{:?}] unexpected decoding from CESU-8 to UTF-8", variant, text)
+    assert_eq!(
+        text, utf8,
+        "[{:?} variant][{:?}] unexpected decoding from CESU-8 to UTF-8",
+        variant, text
+    )
 }
 #[cfg(test)]
 fn test_encoded_same(text: &str, expected: &[u8]) {
@@ -494,13 +554,22 @@ fn test_encoded_same(text: &str, expected: &[u8]) {
 #[cfg(test)]
 fn test_surrogates(ch: char, expected: &[u8; 6]) {
     let encoded = encoding::enc_surrogates(ch);
-    assert_eq!(expected, &encoded, "enc_surrogates returned unexpected encoded character");
+    assert_eq!(
+        expected, &encoded,
+        "enc_surrogates returned unexpected encoded character"
+    );
 
     let decoded = decoding::dec_surrogates(encoded[1], encoded[2], encoded[4], encoded[5]);
-    let decoded_ch = std::str::from_utf8(&decoded).expect("dec_surrogates returned invalid UTF-8")
-        .chars().next().unwrap();
+    let decoded_ch = std::str::from_utf8(&decoded)
+        .expect("dec_surrogates returned invalid UTF-8")
+        .chars()
+        .next()
+        .unwrap();
 
-    assert_eq!(ch, decoded_ch, "dec_surrogates returned unexpected character");
+    assert_eq!(
+        ch, decoded_ch,
+        "dec_surrogates returned unexpected character"
+    );
 }
 
 #[test]
@@ -515,10 +584,10 @@ fn embedded_nuls() {
     test_encoded(Variant::Standard, "\0middle\0", b"\0middle\0");
     test_encoded(Variant::Standard, "\0\0\0", b"\0\0\0");
 
-    test_encoded(Variant::Java,     "plain", b"plain");
-    test_encoded(Variant::Java,     "start\0end", b"start\xC0\x80end");
-    test_encoded(Variant::Java,     "\0middle\0", b"\xC0\x80middle\xC0\x80");
-    test_encoded(Variant::Java,     "\0\0\0", b"\xC0\x80\xC0\x80\xC0\x80");
+    test_encoded(Variant::Java, "plain", b"plain");
+    test_encoded(Variant::Java, "start\0end", b"start\xC0\x80end");
+    test_encoded(Variant::Java, "\0middle\0", b"\xC0\x80middle\xC0\x80");
+    test_encoded(Variant::Java, "\0\0\0", b"\xC0\x80\xC0\x80\xC0\x80");
 }
 
 #[test]
@@ -532,32 +601,46 @@ fn supplementary_pairs() {
     // These should encode as the same, whether its java variant or not
     test_encoded_same("plain", b"plain");
     test_encoded_same("start🟣end", b"start\xED\xA0\xBD\xED\xBF\xA3end");
-    test_encoded_same("🟣middle🟣", b"\xED\xA0\xBD\xED\xBF\xA3middle\xED\xA0\xBD\xED\xBF\xA3");
-    test_encoded_same("🟣🟣🟣", b"\xED\xA0\xBD\xED\xBF\xA3\xED\xA0\xBD\xED\xBF\xA3\xED\xA0\xBD\xED\xBF\xA3");
+    test_encoded_same(
+        "🟣middle🟣",
+        b"\xED\xA0\xBD\xED\xBF\xA3middle\xED\xA0\xBD\xED\xBF\xA3",
+    );
+    test_encoded_same(
+        "🟣🟣🟣",
+        b"\xED\xA0\xBD\xED\xBF\xA3\xED\xA0\xBD\xED\xBF\xA3\xED\xA0\xBD\xED\xBF\xA3",
+    );
 }
 
 #[test]
 fn from_utf8_inplace() {
     let text = "hello\0";
-    
+
     // reuse string
     {
         // buffer shouldn't even be used - leave it at length 0
         let mut buf = [0; 0];
-        let std = Cesu8Str::from_utf8_inplace(text, &mut buf, Variant::Standard).expect("string to be literal, no io necessary");
-        
+        let std = Cesu8Str::from_utf8_inplace(text, &mut buf, Variant::Standard)
+            .expect("string to be literal, no io necessary");
+
         // if borrowed, it comes from the `text` as `buf` is zero-length
-        assert!(matches!(std.bytes, Cow::Borrowed(_)), "did not use str data for Cesu8Str");
+        assert!(
+            matches!(std.bytes, Cow::Borrowed(_)),
+            "did not use str data for Cesu8Str"
+        );
     }
 
     // use buffer
     {
         // buffer shouldn't even be used - leave it at length 0
         let mut buf = [0; 16];
-        let std = Cesu8Str::from_utf8_inplace(text, &mut buf, Variant::Java).expect("there was not enough space in buf");
-        
+        let std = Cesu8Str::from_utf8_inplace(text, &mut buf, Variant::Java)
+            .expect("there was not enough space in buf");
+
         // if borrowed, it comes from the `buf` as `text` would have to change
-        assert!(matches!(std.bytes, Cow::Borrowed(_)), "did not use str data for Cesu8Str");
+        assert!(
+            matches!(std.bytes, Cow::Borrowed(_)),
+            "did not use str data for Cesu8Str"
+        );
         assert_eq!(std.bytes.len(), 7, "string length was not as expected");
     }
 
@@ -568,7 +651,11 @@ fn from_utf8_inplace() {
         // needs to be Java variant to prevent borrowing from `text`
         let res = Cesu8Str::from_utf8_inplace(text, &mut buf, Variant::Java);
 
-        assert!(res.is_err(), "there was enough space in buf, with 0-length buf (res = {:?})", res);
+        assert!(
+            res.is_err(),
+            "there was enough space in buf, with 0-length buf (res = {:?})",
+            res
+        );
     }
 }
 
@@ -578,7 +665,12 @@ fn from_cesu8_lossy() {
     const _UTF8_REPLACE: &[u8] = b"\xEF\xBF\xBD";
 
     #[track_caller] // keep panic/error lines correct for each subtest
-    fn assert_lossy<'a, 'b>(raw: &'a [u8], lossy: impl AsRef<[u8]>, variant: Variant, utf8_err: Result<(), Utf8Error>) {
+    fn assert_lossy<'a, 'b>(
+        raw: &'a [u8],
+        lossy: impl AsRef<[u8]>,
+        variant: Variant,
+        utf8_err: Result<(), Utf8Error>,
+    ) {
         let parsed = Cesu8Str::from_cesu8_lossy(raw, variant);
         assert_eq!(lossy.as_ref(), parsed.as_bytes());
         assert_eq!(utf8_err, parsed.utf8_error);
@@ -591,11 +683,26 @@ fn from_cesu8_lossy() {
     assert_lossy(b"start\xC0end", "start\u{FFFD}end", Java, Ok(()));
 
     // missing byte on first half surrogate pair
-    assert_lossy(b"start\xED\xA0\xED\xBF\xA3end", "start\u{FFFD}\u{FFFD}end", Standard, Ok(()));
+    assert_lossy(
+        b"start\xED\xA0\xED\xBF\xA3end",
+        "start\u{FFFD}\u{FFFD}end",
+        Standard,
+        Ok(()),
+    );
 
     // missing byte on second surrogate pair
-    assert_lossy(b"start\xED\xA0\xBD\xED\xBFend", "start\u{FFFD}\u{FFFD}end", Standard, Ok(()));
+    assert_lossy(
+        b"start\xED\xA0\xBD\xED\xBFend",
+        "start\u{FFFD}\u{FFFD}end",
+        Standard,
+        Ok(()),
+    );
 
     // missing byte on second surrogate pair, with valid CESU8 for UTF8 error
-    assert_lossy(b"start\xED\xA0\xBD\xED\xBF\xA3middle\xED\xA0\xBD\xED\xBFend", b"start\xED\xA0\xBD\xED\xBF\xA3middle\xEF\xBF\xBD\xEF\xBF\xBDend", Standard, Err(utf8err_new(5, Some(1))));
+    assert_lossy(
+        b"start\xED\xA0\xBD\xED\xBF\xA3middle\xED\xA0\xBD\xED\xBFend",
+        b"start\xED\xA0\xBD\xED\xBF\xA3middle\xEF\xBF\xBD\xEF\xBF\xBDend",
+        Standard,
+        Err(utf8err_new(5, Some(1))),
+    );
 }

@@ -10,7 +10,6 @@
 // option. This file may not be copied, modified, or distributed except
 // according to those terms.
 
-
 //! A simple library implementing the [CESU-8 compatibility encoding
 //! scheme](http://www.unicode.org/reports/tr26/tr26-2.html).  This is a
 //! non-standard variant of UTF-8 that is used internally by some systems
@@ -42,7 +41,7 @@
 //! interacting with legacy libraries. CESU-8 is intended as an
 //! internal-only format, malformed data should be assumed to be improperly
 //! encoded (a bug), or an attacker.
-//! 
+//!
 //! ### Java and U+0000, and other variants
 //!
 //! Java uses the CESU-8 encoding as described above, but with one
@@ -80,16 +79,17 @@
 
 #![warn(missing_docs)]
 
-mod unicode;
-mod string;
-mod string_impls;
 mod decoding;
 mod encoding;
 mod legacy_api;
+mod string;
+mod string_impls;
+#[rustfmt::skip]
+mod unicode;
 
-pub use crate::string::Cesu8Str;
 pub use crate::decoding::Cesu8Error;
 pub use crate::legacy_api::*;
+pub use crate::string::Cesu8Str;
 
 /// Which variant of the encoding are we working with?
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

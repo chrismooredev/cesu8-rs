@@ -21,8 +21,7 @@ use crate::{Cesu8Error, Cesu8Str, Variant};
 ///            from_cesu8(data).unwrap());
 /// ```
 pub fn from_cesu8(bytes: &[u8]) -> Result<Cow<str>, Cesu8Error> {
-    Cesu8Str::from_cesu8(bytes, Variant::Standard)
-        .map(|cesu| cesu.into_str())
+    Cesu8Str::from_cesu8(bytes, Variant::Standard).map(|cesu| cesu.into_str())
 }
 
 /// Convert Java's modified UTF-8 data to a Rust string, re-encoding only if
@@ -50,17 +49,20 @@ pub fn from_cesu8(bytes: &[u8]) -> Result<Cow<str>, Cesu8Error> {
 ///            from_java_cesu8(data).unwrap());
 /// ```
 pub fn from_java_cesu8(bytes: &[u8]) -> Result<Cow<str>, Cesu8Error> {
-    Cesu8Str::from_cesu8(bytes, Variant::Java)
-        .map(|cesu| cesu.into_str())
+    Cesu8Str::from_cesu8(bytes, Variant::Java).map(|cesu| cesu.into_str())
 }
 
 #[test]
 fn test_from_cesu8() {
     // The surrogate-encoded character below is from the ICU library's
     // icu/source/test/testdata/conversion.txt test case.
-    let data = &[0x4D, 0xE6, 0x97, 0xA5, 0xED, 0xA0, 0x81, 0xED, 0xB0, 0x81, 0x7F];
-    assert_eq!(Cow::Borrowed("M日\u{10401}\u{7F}"),
-               from_cesu8(data).unwrap());
+    let data = &[
+        0x4D, 0xE6, 0x97, 0xA5, 0xED, 0xA0, 0x81, 0xED, 0xB0, 0x81, 0x7F,
+    ];
+    assert_eq!(
+        Cow::Borrowed("M日\u{10401}\u{7F}"),
+        from_cesu8(data).unwrap()
+    );
 
     // We used to have test data from the CESU-8 specification, but when we
     // worked it through manually, we got the wrong answer:
