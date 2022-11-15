@@ -3,8 +3,9 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::io::{ErrorKind, Read, Write};
 
+use clap::Parser;
+
 use cesu8str::{Cesu8Str, Variant};
-use clap::Clap;
 
 const HELP_TEXT: &str = "Converts files or standard IO streams between standard UTF8 and CESU8, or the JVM's modified UTF-8.
 Note that the default Windows' console does not support non-UTF8 sequences - attempting to type/print them will result in an error.
@@ -17,7 +18,7 @@ EXIT CODES:
 2 - if an encoding error has occured (invalid/incomplete character sequences/etc)
 ";
 
-#[derive(Debug, clap::Clap)]
+#[derive(Debug, clap::Parser)]
 #[clap(version = env!("CARGO_PKG_VERSION"), author = env!("CARGO_PKG_AUTHORS"), about = HELP_TEXT)]
 struct Opts {
     /// Toggles the use of the JVM's modified UTF8. In effect, it encodes nul-bytes as 0xC0,0x80 while nul-bytes are left alone in normal mode.

@@ -59,7 +59,7 @@ impl<'s> Cesu8Str<'s> {
     /// * Example 1: A valid UTF8/Ascii string
     /// ```
     /// # use std::str;
-    /// # use cesu8::{Cesu8Str, Variant};
+    /// # use cesu8str::{Cesu8Str, Variant};
     /// const VALID_UTF8: &[u8] = b"my valid string";
     /// let as_str = str::from_utf8(VALID_UTF8).map(|_| ());
     /// let as_cesu8 = Cesu8Str::from_cesu8(VALID_UTF8, Variant::Standard).unwrap();
@@ -69,7 +69,7 @@ impl<'s> Cesu8Str<'s> {
     /// * Example 2: Embedded Nuls are invalid UTF8
     /// ```
     /// # use std::str;
-    /// # use cesu8::{Cesu8Str, Variant};
+    /// # use cesu8str::{Cesu8Str, Variant};
     /// const INVALID_UTF8: &[u8] = b"with embedded \xC0\x80 null";
     /// let as_str = str::from_utf8(INVALID_UTF8).map(|_| ());
     /// let as_cesu8 = Cesu8Str::from_cesu8(INVALID_UTF8, Variant::Java).unwrap();
@@ -397,7 +397,7 @@ impl<'s> Cesu8Str<'s> {
                     // SAFETY: `ensure_good` parameter is provided by a CESU-8 decoding error, and is valid
                     encoding::utf8_to_cesu8::<W>(text, e.valid_up_to(), target, variant)?
                 };
-                _utf8_res.map_err(|e| io::Error::new(ErrorKind::Other, e))?
+                _utf8_res.map_err(|e| io::Error::new(io::ErrorKind::Other, e))?
             }
         };
         Ok(())

@@ -12,7 +12,7 @@ repository = "https://github.com/chrismooredev/cesu8-rs"
 documentation = "https://docs.rs/cesu8str"
 
 [dependencies]
-clap = { version = "=3.0.0-beta.4", optional = true }
+clap = { version = "^4.0.24", optional = true, features = ['derive'] }
 
 [features]
 # Allow access to unstable features when being built with a nightly compiler,
