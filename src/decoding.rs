@@ -484,7 +484,7 @@ fn until_next_codepoint(bytes: &[u8], start: usize, utf8_err: Result<(), Utf8Err
 #[inline]
 #[track_caller]
 pub(crate) fn from_utf8_slice<'s>(by: &'s [u8], expect_msg: &'_ str) -> &'s str {
-    if cfg!(debug_assertions) {
+    if cfg!(debug_assertions) || cfg!(validate_release) {
         std::str::from_utf8(by).expect(expect_msg)
     } else {
         unsafe { std::str::from_utf8_unchecked(by) }
@@ -493,7 +493,7 @@ pub(crate) fn from_utf8_slice<'s>(by: &'s [u8], expect_msg: &'_ str) -> &'s str 
 #[inline]
 #[track_caller]
 pub(crate) fn from_utf8_vec(by: Vec<u8>, expect_msg: &str) -> String {
-    if cfg!(debug_assertions) {
+    if cfg!(debug_assertions) || cfg!(validate_release) {
         String::from_utf8(by).expect(expect_msg)
     } else {
         unsafe { String::from_utf8_unchecked(by) }

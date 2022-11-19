@@ -225,10 +225,12 @@ pub(crate) fn enc_surrogates<C: Into<u32>>(ch: C) -> [u8; 6] {
 /// Encode a single surrogate as CESU-8.
 #[inline]
 fn enc_surrogate(surrogate: u16) -> [u8; 3] {
-    debug_assert!(
-        (0xD800..=0xDFFF).contains(&surrogate),
-        "trying to encode invalid surrogate pair"
-    );
+    if cfg!(debug_assertions) || cfg!(validate_release) {
+        assert!(
+            (0xD800..=0xDFFF).contains(&surrogate),
+            "trying to encode invalid surrogate pair"
+        );
+    }
     // 1110xxxx 10xxxxxx 10xxxxxx
     [
         0b11100000 | ((surrogate & 0b1111_0000_0000_0000) >> 12) as u8,
