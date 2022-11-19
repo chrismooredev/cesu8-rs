@@ -124,8 +124,8 @@ impl<'s> Ord for Cesu8Str<'s> {
                 match i.next() {
                     None => None,
                     Some(0xC0) if v.encodes_nul() => {
-                        let _80 = i.next();
-                        debug_assert_eq!(_80, Some(0x80));
+                        let _b80 = i.next();
+                        debug_assert_eq!(_b80, Some(0x80));
                         Some(0x00)
                     }
                     Some(o) => Some(o),
