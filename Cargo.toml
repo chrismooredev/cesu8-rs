@@ -10,7 +10,7 @@ readme = "README.md"
 
 repository = "https://github.com/chrismooredev/cesu8str-rs"
 documentation = "https://docs.rs/cesu8str"
-keywords = ["jvm","cesu8"]
+keywords = ["jvm","cesu8","mysql"]
 categories = ["encoding", "command-line-utilities", "database"]
 
 exclude = [
