@@ -27,9 +27,14 @@ Some of this code is adapted from Rust's [`src/libcore/str.rs` file][str.rs].
 This code is covered by LICENSE-RUST.txt and copyright by The Rust Project
 Developers and individual Rust contributors, as described in that file.
 
+Most code in this project was forked, and adapted from, [Eric Kidd's cesu8][emk-cesu8] crate.
+That adapted code is distributed under the same terms as the original project at
+time of fork.
+
 The new code in this project is distributed under the same terms.
 
 [str.rs]: https://github.com/rust-lang/rust/blob/master/src/libcore/str.rs
+[emk-cesu8]: https://github.com/emk/cesu8-rs
 [crates-badge]: https://img.shields.io/crates/v/cesu8str.svg
 [crates-url]: https://crates.io/crates/cesu8str
 [docs-badge]: https://img.shields.io/badge/docs.rs-cesu8str?logo=docs.rs
