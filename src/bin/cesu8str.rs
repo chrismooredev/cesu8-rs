@@ -57,7 +57,8 @@ fn real_main() -> i32 {
     let h_stdout = std::io::stdout();
 
     let mut input: Box<dyn Read> = match opts.input {
-        Some(file) if file.to_str() != Some("-") => {
+        None | Some("-") => Box::new(h_stdin.lock()),
+        Some(file) => {
             // we are a custom file, also not "-"
             let file = match File::open(file) {
                 Ok(f) => f,
@@ -69,11 +70,11 @@ fn real_main() -> i32 {
             };
             Box::new(file)
         }
-        _ => Box::new(h_stdin.lock()),
     };
 
-    let mut output: Box<dyn Write> = match opts.output {
-        Some(file) if file.to_str() != Some("-") => {
+    let mut output: Box<dyn Write> = match opts.output.as_ref() {
+        None | Some("-") => Box::new(h_stdout.lock()),
+        Some(file) => {
             // we are a custom file, also not "-"
             let file = match File::create(file) {
                 Ok(f) => f,
@@ -85,7 +86,6 @@ fn real_main() -> i32 {
             };
             Box::new(file)
         }
-        _ => Box::new(h_stdout.lock()),
     };
 
     let variant = match opts.java {
