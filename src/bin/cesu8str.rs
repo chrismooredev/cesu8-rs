@@ -21,15 +21,17 @@ EXIT CODES:
 #[derive(Debug, clap::Parser)]
 #[clap(version = env!("CARGO_PKG_VERSION"), author = env!("CARGO_PKG_AUTHORS"), about = HELP_TEXT)]
 struct Opts {
-    /// Toggles the use of the JVM's modified UTF8. In effect, it encodes nul-bytes as 0xC0,0x80 while nul-bytes are left alone in normal mode.
+    /// Toggles the use of the JVM's modified UTF8. In effect, it (en|de)codes nul-bytes as 0xC0,0x80 while nul-bytes are left alone in normal mode.
     #[clap(short, long)]
     java: bool,
     /// Decodes CESU8 text into standard UTF8. By default, this tool encodes UTF8 to CESU8.
     #[clap(short, long)]
     decode: bool,
     /// The input file. Defaults to stdin if '-' or not set
+    #[clap(short, long)]
     input: Option<OsString>,
     /// The output file. Defaults to stdout if '-' or not set
+    #[clap(short, long)]
     output: Option<OsString>,
     // #[clap(short, long, default_value = "4096")]
     // chunk: usize,
