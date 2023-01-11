@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::ffi::OsString;
+use std::ffi::{OsString, OsStr};
 use std::fs::File;
 use std::io::{ErrorKind, Read, Write};
 
@@ -57,7 +57,8 @@ fn real_main() -> i32 {
     let h_stdout = std::io::stdout();
 
     let mut input: Box<dyn Read> = match opts.input {
-        None | Some("-") => Box::new(h_stdin.lock()),
+        None => Box::new(h_stdin.lock()),
+        Some(f) if f == "-" => Box::new(h_stdin.lock()),
         Some(file) => {
             // we are a custom file, also not "-"
             let file = match File::open(file) {
@@ -73,7 +74,8 @@ fn real_main() -> i32 {
     };
 
     let mut output: Box<dyn Write> = match opts.output.as_ref() {
-        None | Some("-") => Box::new(h_stdout.lock()),
+        None => Box::new(h_stdout.lock()),
+        Some(f) if f == "-" => Box::new(h_stdout.lock()),
         Some(file) => {
             // we are a custom file, also not "-"
             let file = match File::create(file) {
@@ -97,8 +99,8 @@ fn real_main() -> i32 {
         4096, /* opts.chunk */
         !opts.decode,
         variant,
-        &mut input,
-        &mut output,
+        input,
+        output,
     )
 }
 
@@ -106,15 +108,15 @@ fn read_write_loop(
     buf_size: usize,
     encode: bool,
     variant: Variant,
-    input: &mut dyn Read,
-    output: &mut dyn Write,
+    input: Box<dyn Read>,
+    output: Box<dyn Write>,
 ) -> i32 {
     let debug_output = std::env::var("CESU_DEBUG").is_ok();
 
     macro_rules! debugln {
         ($fmt: literal $(, $rest:expr)*) => {
             if debug_output {
-                eprintln!(concat!("[{}:{}] ", $fmt), file!(), line!() $(, $rest)*);
+                eprintln!(concat!("[", file!(), ":", stringify!(line!()), "] ", $fmt) $(, $rest)*);
             }
         }
     }
@@ -126,9 +128,11 @@ fn read_write_loop(
     let mut start = 0;
     let mut end = 0;
 
-    let mut input_done = false;
+    // let mut input_done = false;
     let mut io_error = false;
     let mut bad_encoding = false;
+    let mut oinput = Option::Some(input);
+    let mut ooutput = Option::Some(output); // wrap in option to drop on close
 
     loop {
         // move existing buffer to start of slice
@@ -143,30 +147,35 @@ fn read_write_loop(
             end -= start;
             start = 0;
         }
-        if input_done && end == 0 {
+        if oinput.is_none() && end == 0 {
             // we are done with input, and we have no more data to process
             break;
         }
 
-        // if we have over 3/4s of a buffer to fill, fill the buffer
-        if !input_done && end <= buf.len() / 4 {
-            match input.read(&mut buf[end..]) {
-                Ok(0) => {
-                    input_done = true;
-                }
-                Ok(n) => {
-                    debugln!("read input; end += n, ({} += {}) = {}", end, n, end + n);
-                    debug_assert!(end + n <= buf.len(), "read more than the buffer can hold");
-                    end += n;
-                }
-                Err(e) if e.kind() == ErrorKind::BrokenPipe => {
-                    // BrokenPipe is "expected", just treat as EOF
-                    input_done = true;
-                }
-                Err(e) => {
-                    eprintln!("input error: {}", e);
-                    io_error = true;
-                    input_done = true;
+        // if we have over 3/4s of a buffer to fill, attempt to fill the buffer
+        if let Some(input) = oinput.as_mut() {
+            if end <= buf.len() / 4 {
+                // this can block - that is ok
+                // any output we possibly could have given, we have already done so
+                // if we're not waiting to output - we are only waiting for input
+                match input.read(&mut buf[end..]) {
+                    Ok(0) => {
+                        oinput.take().expect("attempt to take already taken stdin");
+                    }
+                    Ok(n) => {
+                        debugln!("read input; end += n, ({} += {}) = {}", end, n, end + n);
+                        debug_assert!(end + n <= buf.len(), "read more than the buffer can hold");
+                        end += n;
+                    }
+                    Err(e) if e.kind() == ErrorKind::BrokenPipe => {
+                        // BrokenPipe is "expected", just treat as EOF
+                        oinput.take().expect("attempt to take already taken stdin");
+                    }
+                    Err(e) => {
+                        debugln!("input error: {}", e);
+                        io_error = true;
+                        oinput.take().expect("attempt to take already taken stdin");
+                    }
                 }
             }
         }
@@ -185,13 +194,13 @@ fn read_write_loop(
                 (bytes, err)
             } else {
                 let res = Cesu8Str::from_cesu8(&buf[..end], variant);
-                // eprintln!("[{}:{}] from_cesu8 = {:?}", file!(), line!(), res);
+                // debugln!("from_cesu8 = {:?}", res);
                 let (s, err) = match res {
                     Ok(s) => (s, None),
                     Err(e) => {
                         // for various reasons, there is no from_cesu8_unchecked
                         let s = Cesu8Str::from_cesu8(&buf[..e.valid_up_to()], variant).unwrap();
-                        // eprintln!("[{}:{}] valid_cesu8 = (len = {} = 0x{:X}) {:?}", file!(), line!(), s.as_bytes().len(), s.as_bytes().len(), s);
+                        // debugln!("valid_cesu8 = (len = {} = 0x{:X}) {:?}", s.as_bytes().len(), s.as_bytes().len(), s);
                         (s, Some((e.valid_up_to(), e.error_len())))
                     }
                 };
@@ -204,7 +213,7 @@ fn read_write_loop(
             };
 
             // if let Some(e) = err {
-            //     eprintln!("[{}:{}] error on absolute index {} (or 0x{:X}), error_len = {:?}", file!(), line!(), absolute_start + e.0, absolute_start + e.0, e.1);
+            //     debugln!("error on absolute index {} (or 0x{:X}), error_len = {:?}", absolute_start + e.0, absolute_start + e.0, e.1);
             // }
 
             match err {
@@ -231,7 +240,7 @@ fn read_write_loop(
                     start = n;
                     absolute_start += n;
 
-                    if input_done {
+                    if oinput.is_none() {
                         eprintln!("encoding error: input truncated");
                         bad_encoding = true;
                         break;
@@ -240,13 +249,16 @@ fn read_write_loop(
                 Some((n, Some(el))) => {
                     // there was an error in the byte encoding
 
-                    let enc = if encode { "utf-8" } else { "cesu-8" };
+                    let src = if !encode { "utf-8" } else { "cesu-8" };
                     eprintln!(
-                        "input error: invalid {} sequence of {} bytes from index {} (or 0x{:X})",
-                        enc,
+                        "input error: invalid source {} sequence of {} bytes from index {} (or 0x{:X}) (&data[{}..{}+6] = {:?})",
+                        src,
                         el,
                         absolute_start + n,
-                        absolute_start + n
+                        absolute_start + n,
+                        absolute_start + n,
+                        absolute_start + n,
+                        &data[n..data.len().min(n+6)]
                     );
                     debugln!(
                         "-> abs_start+n  ::  {}+{}={} :: 0x{:X}+0x{:X}=0x{:X}",
@@ -267,20 +279,26 @@ fn read_write_loop(
                     end = n; // skip past erroring data
 
                     bad_encoding = true;
-                    input_done = true;
+                    oinput.take(); // it is ok if the input closed beforehand
                 }
             }
 
-            match output.write_all(&data) {
-                Ok(()) => {}
-                Err(e) if e.kind() == ErrorKind::BrokenPipe => {
-                    // stop procesing - we can't do any more
-                    break;
-                }
-                Err(e) => {
-                    eprintln!("output error: {}", e);
-                    io_error = true;
-                    break;
+            debugln!("writing out {} bytes = {:?}", data.len(), data);
+            if let Some(output) = ooutput.as_mut() {
+                match output.write_all(&data) {
+                    Ok(()) => {
+                        // dbg!(output.flush()); // best effort - ignore error
+                    }
+                    Err(e) if e.kind() == ErrorKind::BrokenPipe => {
+                        // stop procesing - we can't do any more
+                        ooutput.take().expect("attempt to take empty ooutput");
+                        break;
+                    }
+                    Err(e) => {
+                        eprintln!("output error: {}", e);
+                        io_error = true;
+                        break;
+                    }
                 }
             }
         }
