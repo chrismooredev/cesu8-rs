@@ -197,7 +197,7 @@ impl<'s> fmt::Debug for Cesu8Str<'s> {
                 .field("bytes", &pretty)
                 .finish()
         } else {
-            write!(f, "{:?}", pretty)
+            write!(f, "{pretty:?}")
         }
     }
 }

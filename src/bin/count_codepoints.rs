@@ -99,7 +99,7 @@ fn real_main() -> i32 {
         .unwrap_or_else(|| cow!("count_bytes"));
 
     if opts.iter().any(|s| s == "--help") {
-        eprintln!("USAGE: {:?} [--json] [file] [KB_chunk_size=4]", exe);
+        eprintln!("USAGE: {exe:?} [--json] [file] [KB_chunk_size=4]");
         eprintln!();
         eprintln!("Reads a file and emits the number of occurences differing lengths of UTF-8 codepoints on stdout.");
         eprintln!();
@@ -132,11 +132,8 @@ fn real_main() -> i32 {
         }
         Ok(o) => o,
         Err((s, e)) => {
-            eprintln!("USAGE: {} [--json] [file] [KB_chunk_size=4]", exe);
-            eprintln!(
-                "error parsing argument `chunk_size` (provided: {:?}) as positive integer: {}",
-                s, e
-            );
+            eprintln!("USAGE: {exe} [--json] [file] [KB_chunk_size=4]");
+            eprintln!("error parsing argument `chunk_size` (provided: {s:?}) as positive integer: {e}",);
             return 1;
         }
     };
@@ -168,11 +165,11 @@ fn real_main() -> i32 {
             0
         }
         Ok(Err(e)) => {
-            eprintln!("error reading input: {}", e);
+            eprintln!("error reading input: {e}");
             2
         }
         Err(e) => {
-            eprintln!("error reading input: {}", e);
+            eprintln!("error reading input: {e}");
             2
         }
     }

@@ -40,7 +40,7 @@ pub(crate) fn utf8_as_cesu8_spec<const ENCODE_NUL: bool>(
 
         // skip the continuation bytes of the character
         // this should always be at least 1 for valid UTF8, which &str provides
-        assert_ne!(w, 0, "utf8 char length was 0, this is illegal in well-formed utf8 strings (byte {:x?}, bytes[{}] from {:x?})", b, i, text_bytes);
+        assert_ne!(w, 0, "utf8 char length was 0, this is illegal in well-formed utf8 strings (byte {b:x?}, bytes[{i}] from {text_bytes:x?})");
         i += w;
     }
 
