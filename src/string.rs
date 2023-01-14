@@ -23,7 +23,7 @@ fn valid_replacement_char() {
         .as_bytes();
     assert_eq!(
         as_bytes, UTF8_REPLACEMENT_CHAR,
-        "internal UTF8_REPLACEMENT_CHAR differs from the standard library"
+        "internal 'cached' UTF8_REPLACEMENT_CHAR differs from the standard library"
     );
 }
 

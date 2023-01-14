@@ -18,7 +18,7 @@ This encoding is sometimes needed when working with Java, Oracle or MySQL,
 and when trying to store emoji, hieroglyphs, or other characters on the
 Supplementary Multilingual Plane or the Supplementary Ideographic Plane.
 
-We also support Java's [Modified UTF-8][wikipedia-mutf8] encoding, which encodes `\0`
+We also support Java's [Modified UTF-8][wikipedia-mutf8] encoding, which additionally encodes `\0`
 using a multi-byte UTF-8 sequence.
 
 # Commandline Utilities
