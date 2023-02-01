@@ -1,6 +1,6 @@
 [package]
 name = "cesu8str"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Chris Moore <git@chrismoore.dev>", "Eric Kidd <git@randomhacks.net>"]
 edition = "2018"
 
