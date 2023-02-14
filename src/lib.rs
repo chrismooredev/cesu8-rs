@@ -87,9 +87,20 @@ mod string_impls;
 #[rustfmt::skip]
 mod unicode;
 
+mod ngstr;
+
+pub use ngstr::{
+    NGCesu8CError,
+    mutf8cstr::Mutf8CStr,
+    mutf8cstr::FromStrWithNulError,
+    mutf8cstring::Mutf8CString,
+    mutf8cstring::FromMutf8BytesWithNulError,
+};
+
 pub use crate::decoding::Cesu8Error;
 pub use crate::legacy_api::*;
 pub use crate::string::Cesu8Str;
+pub(crate) use crate::string::default_cesu8_capacity;
 
 /// Which variant of the encoding are we working with?
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

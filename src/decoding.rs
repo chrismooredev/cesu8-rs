@@ -148,7 +148,13 @@ pub(crate) fn cesu8_to_utf8_const<const ENCODE_NUL: bool>(cesu: &Cesu8Str<'_>) -
         cesu.variant,
         "ran wrong const-generic routine for cesu type"
     );
-    debug_assert!(cesu8_validate::<ENCODE_NUL>(&cesu.bytes).is_ok(), "stored invalid CESU-8 within Cesu8Str (cesu8 str: variant={:?}, utf8_err={:?}, bytes={:X?})", cesu.variant, cesu.utf8_error, cesu.bytes);
+    if cfg!(debug_assertions) {
+        match cesu8_validate::<ENCODE_NUL>(&cesu.bytes) {
+            Ok(utf8err) if utf8err != cesu.utf8_error => panic!("internal CESU-8 contains different UTF-8 values than cached after debug validation"),
+            Err(_) => panic!("stored invalid CESU-8 within Cesu8Str (cesu8 str: variant={:?}, utf8_err={:?}, bytes={:X?})", cesu.variant, cesu.utf8_error, cesu.bytes),
+            Ok(_) => { /* all good */}
+        }
+    }
 
     let bytes = cesu.as_bytes();
 
@@ -288,6 +294,10 @@ pub(crate) fn cesu8_to_utf8(cesu: &Cesu8Str<'_>) -> String {
 }
 
 /// Validates raw bytes as CESU8, reporting any errors if found. Will not allocate.
+/// 
+/// If ENCODE_NUL is enabled, this will error on any interior nuls, even those
+/// acting as a nul-terminator. It is not recommended to pass a nul-terminated
+/// slice to this function.
 pub(crate) fn cesu8_validate<const ENCODE_NUL: bool>(
     bytes: &[u8],
 ) -> Result<Result<(), Utf8Error>, Cesu8Error> {

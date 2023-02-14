@@ -309,11 +309,11 @@ impl<'s> Cesu8Str<'s> {
     pub fn from_utf8<C: Into<Cow<'s, str>>>(text: C, variant: Variant) -> Cesu8Str<'s> {
         // currently always allocates, may not in the future
 
-        let text = text.into();
+        let text: Cow<'s, str> = text.into();
 
         match encoding::utf8_as_cesu8(Cow::Borrowed(&text), variant) {
             Ok(c) => {
-                // able to go without allocating
+                // able to go without allocating - happy path
                 Cesu8Str {
                     variant,
                     utf8_error: c.utf8_error,
