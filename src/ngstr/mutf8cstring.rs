@@ -658,7 +658,7 @@ impl Mutf8CStr {
 
         let rest = s.split_at(s.len()-1).0;
 
-        let mutf8 = Cesu8Str::from_utf8(rest, Variant::Java);
+        let mutf8 = crate::Cesu8Str::from_utf8(rest, Variant::Java);
 
         // the string should only be Cow::Owned
         match mutf8.bytes {

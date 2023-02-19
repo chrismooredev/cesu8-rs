@@ -19,6 +19,9 @@ use std::process::{Stdio, ChildStdin, ChildStdout, Child, Output};
 #[cfg(not(unix))]
 compile_error!("Must use a unix platform for cesu8str_converts_stdio");
 
+#[cfg(not(feature = "build-binary"))]
+compile_error!("Must build test cesu8str_converts_stdio with 'build-binary'");
+
 // #[cfg(not(build_binary))]
 // compile_error!("Must build with --features=build-binary for cesu8str_converts_stdio");
 
