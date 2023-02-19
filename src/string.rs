@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use std::borrow::Cow;
 use std::io;
 use std::str::Utf8Error;
@@ -37,6 +39,7 @@ fn valid_replacement_char() {
 /// the JVM and JNI applications, encode a nul byte (hex `00`) as a UTF-8 2-byte zero
 /// character (hex `C0 80`)
 #[derive(Clone)]
+#[deprecated(since = "0.1.3", note = "use cesu8str::Mutf8CStr or cesu8str::Mutf8CString")]
 pub struct Cesu8Str<'s> {
     pub(crate) variant: Variant,
 

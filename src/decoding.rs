@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use std::borrow::Cow;
 use std::error::Error;
 use std::fmt;

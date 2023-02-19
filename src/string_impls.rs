@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use crate::decoding::from_utf8_slice;
 use crate::encoding::utf8err_inc;
 use crate::{Cesu8Str, Variant};
