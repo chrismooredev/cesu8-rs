@@ -16,6 +16,7 @@ use std::hash::Hash;
 use std::ffi::CStr;
 
 use crate::Cesu8Str;
+use crate::Mutf8CString;
 
 use super::NGCesu8CError;
 
@@ -152,13 +153,54 @@ impl Mutf8CStr {
         self._into_mutf8_cstr_unchecked()
     }
 
-    /// len w/o nul
+    /// The length of the MUTF8 string in bytes, excluding the terminating nul byte.
     pub fn len(&self) -> usize {
         self.inner.len() - 1
     }
 
+    /// The length of the MUTF8 string in bytes, including the terminating nul byte.
     pub fn len_with_nul(&self) -> usize {
         self.inner.len()
+    }
+
+    /// Creates an Mutf8CStr that may nor may not allocate. Must be terminated by a singular nul byte. No other nul
+    /// bytes may exist in the string. Will only allocate if 4-byte utf8 sequences exist.
+    /// 
+    /// # Panics
+    /// Panics if the string is not terminated with a nul-byte, or contains nul bytes outside the last character.
+    #[inline]
+    pub fn from_utf8_with_nul(s: &str) -> Cow<Mutf8CStr> {
+        let data: &[u8] = match s.as_bytes() {
+            [rest @ .., b'\0'] => rest,
+
+            // either zero-length or no ending nul byte
+            [..] => panic!("string passed to Mutf8CStr::from_utf8_with_nul is not nul terminated: {:s?}"),
+        };
+
+        if data.contains(&b'\0') {
+            panic!("string passed to Mutf8CStr::from_utf8_with_nul contained an interior nul: {:s?}");
+        }
+
+        let data_utf8 = &s[..s.len()-1];
+        let utf8_as_cesu8 = crate::encoding::utf8_as_cesu8_spec::<true>(Cow::Borrowed(data_utf8));
+        let mutf8 = match utf8_as_cesu8 {
+            // Safety: validated that all bytes (except nul-terminator) are valid CESU8, while also being UTF8
+            // so pass the string as bytes, including the required nul-terminator
+            Ok(_) => Cow::Borrowed(unsafe { Mutf8CStr::_from_bytes_with_nul_unchecked(s.as_bytes()) }),
+            Err(e) => {
+                
+                // Safety: We've pre-checked that `data_utf8[..e.valid_up_to]` is valid CESU-8, continue from there,
+                // reencoding as necessary
+                Cow::Owned(unsafe {
+                    let mut v = Vec::with_capacity(crate::default_cesu8_capacity(s.len()));
+                    let _utf8_err = crate::encoding::utf8_to_cesu8_spec::<_, true>(data_utf8, e.valid_up_to, &mut v).unwrap();
+                    v.push(b'\0'); // add back the nul-byte
+                    Mutf8CString::from_mutf8_vec_unchecked(v)
+                })
+            }
+        };
+        
+        mutf8
     }
 }
 

@@ -46,6 +46,7 @@ pub(crate) fn utf8_as_cesu8_spec<const ENCODE_NUL: bool>(
 
     Ok(Cesu8Str {
         variant: ENCODE_NUL.into(),
+        // would have returned Err(_) if there was a utf8/cesu8 incompatibility
         utf8_error: Ok(()),
         bytes: text_bytes,
     })
