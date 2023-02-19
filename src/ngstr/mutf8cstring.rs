@@ -7,38 +7,52 @@ use std::fmt;
 use std::ffi::c_char;
 use std::hash::Hash;
 
-use crate::Cesu8Str;
 use crate::Variant;
 
 use super::NGCesu8CError;
 use super::mutf8cstr::{Mutf8CStr, FromStrWithNulError};
 
+/// The error when trying to create a Mutf8CString from a byte buffer.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct FromMutf8BytesWithNulError {
     kind: NGCesu8CError,
     bytes: Vec<u8>,
 }
 impl FromMutf8BytesWithNulError {
+    /// The specific error encountered when trying to create a Mutf8CString from a byte buffer.
     pub fn kind(&self) -> &NGCesu8CError {
         &self.kind
     }
+    /// The raw source bytes for the conversion, that caused the error.
+    /// 
+    /// Using [`FromMutf8BytesWithNulError::into_bytes`] over `FromMutf8BytesWithNulError::as_bytes` allows recovering
+    /// the initial allocation.
     pub fn as_bytes(&self) -> &[u8] {
         &self.bytes
     }
+    /// The raw source bytes for the conversion, that caused the error.
+    /// 
+    /// Using `FromMutf8BytesWithNulError::into_bytes` over [`FromMutf8BytesWithNulError::as_bytes`] allows recovering
+    /// the initial allocation.
     pub fn into_bytes(self) -> Vec<u8> {
         self.bytes
     }
 }
 
-#[derive(PartialEq, Eq)]
+/// An owned Mutf8 byte buffer, with a terminating nul byte.
+/// 
+/// This can be safely converted into a pointer for usage with JNI with [`Mutf8CStr::as_ptr()`]
+#[derive(PartialEq, Eq, Clone)]
 pub struct Mutf8CString {
     inner: Box<[u8]>,
 }
 
 // custom impls
 impl Mutf8CString {
+    /// Creates an empty Mutf8CString with the given capacity (plus one for a nul terminator)
     pub fn with_capacity(capacity: usize) -> Mutf8CString {
         let v = Vec::with_capacity(capacity + 1);
+        // Safety: The string is empty so it is valid Mutf8. _from_mutf8_vec_unchecked will add the required nul-terminator.
         unsafe { Mutf8CString::_from_mutf8_vec_unchecked(v) }
     }
 
@@ -82,7 +96,7 @@ impl Mutf8CString {
     /// Extends the current [`Mutf8CString`] with the contents of a pre-validated mutf8 string slice.
     /// 
     /// # Safety
-    /// The contained byte slice must be in valid mutf8, without any nul bytes.
+    /// The contained byte slice must be in valid mutf8, without any nul bytes. (They should be encoded)
     pub unsafe fn extend_from_mutf8_with_bytes<'a, F: FnMut() -> Cow<'a, [u8]>>(&mut self, mut f: F) {
         unsafe { Self::with_self_as_vec(self, |v| {
             let nslice = f();
@@ -91,6 +105,7 @@ impl Mutf8CString {
         })}
     }
 
+    /// Extends the current [`Mutf8CString`] with the contents of another [`Mutf8CStr`]
     pub fn extend_from_mutf8(&mut self, string: &Mutf8CStr) {
         if string.is_empty() { return; }
         unsafe { Self::with_self_as_vec(self, |v| {
@@ -111,6 +126,7 @@ impl Mutf8CString {
         }) }
     }
 
+    /// Allocates a new [`Mutf8CString`] from the contents of a borrowed utf8 [`prim@str`].
     pub fn from_utf8(s: &str) -> Mutf8CString {
         let mut mutf8c = Mutf8CString::with_capacity(crate::default_cesu8_capacity(s.len()));
         mutf8c.extend_from_str(s);
@@ -183,7 +199,7 @@ impl Mutf8CString {
         let utf8_error = crate::decoding::cesu8_validate::<true>(&mutf8c)
             .expect("Mutf8CString did not contain valid MUTF8");
 
-        let utf8 = crate::decoding::cesu8_to_utf8(&Cesu8Str {
+        let utf8 = crate::decoding::cesu8_to_utf8(&crate::Cesu8Str {
             variant: Variant::Java,
             utf8_error,
             bytes: Cow::Owned(mutf8c)
@@ -210,7 +226,15 @@ impl Mutf8CString {
         // }
     }
 
+    /// Converts an owned string to an owned Mutf8CString, while attempting to preserve the allocation of the underlying
+    /// string. Note that any nuls in this string, including any at the end of the string, will be encoded as part of
+    /// the Mutf8 string - that is, nul-terminators are ignored, encoded, and a true nul-terminator is added.
+    /// 
+    /// This currently is only possible for strings under 256 bytes (once in Mutf8 encoding). If the encoded string
+    /// ends up larger, then this function will allocate.
     pub fn from_string(s: String) -> Mutf8CString {
+        // Attempts to re-use the allocation for strings that can fit within 256 bytes
+        // Could this be converted to an in-memory conversion? 
         let buf: [u8; 256] = [0; 256];
         let mut c = std::io::Cursor::new(buf);
         let mutf8 = match unsafe { crate::encoding::utf8_to_cesu8_spec::<_, true>(s.as_str(), 0, &mut c) } {
@@ -224,7 +248,7 @@ impl Mutf8CString {
             },
             Err(_e) => {
                 // string bigger than allowed cesu8 bytes, create new allocation
-                let mut v = Vec::with_capacity(320);
+                let mut v = Vec::with_capacity(crate::default_cesu8_capacity(s.len()+1));
                 crate::encoding::utf8_to_cesu8_safe(s.as_str(), &mut v, Variant::Java).expect("std::io::Write into a Vec shouldn't error");
                 v
             }
@@ -306,7 +330,7 @@ impl Mutf8CString {
     /// [`Mutf8CString::into_raw`] call. This means the [`Mutf8CString::into_raw`]/`from_raw`
     /// methods should not be used when passing the string to C functions that can
     /// modify the string's length. The inner contract of the string being valid mutf8 must
-    /// also be preserved. [`Mutf8CStr::]
+    /// also be preserved.
     ///
     /// > **Note:** If you need to borrow a string that was allocated by
     /// > foreign code, use [`Mutf8CStr`]. If you need to take ownership of
@@ -663,15 +687,6 @@ impl Mutf8CStr {
 impl Borrow<Mutf8CStr> for Mutf8CString {
     fn borrow(&self) -> &Mutf8CStr {
         self
-    }
-}
-impl Clone for Mutf8CString {
-    fn clone(&self) -> Self {
-        let data = self.as_bytes_with_nul().to_vec();
-        // SAFETY: All Mutf8CString's should contain valid data.
-        unsafe {
-            Mutf8CString::_from_mutf8c_vec_with_nul_unchecked(data)
-        }
     }
 }
 impl fmt::Debug for Mutf8CString {

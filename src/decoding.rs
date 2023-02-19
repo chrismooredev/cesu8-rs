@@ -320,8 +320,14 @@ pub(crate) fn cesu8_validate<const ENCODE_NUL: bool>(
                 std::str::from_utf8_unchecked(&bytes[i..uerr.valid_up_to()])
             });
 
-            utf8_as_cesu8_spec::<ENCODE_NUL>(Cow::Borrowed(s))
+            utf8_as_cesu8_spec::<ENCODE_NUL>(s)
                 .map_err(|e| e.increase_valid_index(i))
+                .map(|()| Cesu8Str {
+                    variant: ENCODE_NUL.into(),
+                    bytes: Cow::Borrowed(s.as_bytes()),
+                    // would have returned Err(_) if there was a utf8/cesu8 incompatibility
+                    utf8_error: Ok(())
+                })
         };
 
         // This should either return, or explicitly `continue`

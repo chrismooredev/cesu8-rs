@@ -310,13 +310,13 @@ impl<'s> Cesu8Str<'s> {
         // currently always allocates, may not in the future
 
         let text: Cow<'s, str> = text.into();
-
-        match encoding::utf8_as_cesu8(Cow::Borrowed(&text), variant) {
-            Ok(c) => {
+        match encoding::utf8_as_cesu8(&text, variant) {
+            Ok(()) => {
                 // able to go without allocating - happy path
                 Cesu8Str {
                     variant,
-                    utf8_error: c.utf8_error,
+                    // would have returned Err(_) if there was a utf8/cesu8 incompatibility
+                    utf8_error: Ok(()),
                     bytes: match text {
                         Cow::Borrowed(b) => Cow::Borrowed(b.as_bytes()),
                         Cow::Owned(v) => Cow::Owned(v.into_bytes()),
@@ -349,7 +349,19 @@ impl<'s> Cesu8Str<'s> {
         text: C,
         variant: Variant,
     ) -> Result<Cesu8Str<'s>, Cesu8Error> {
-        encoding::utf8_as_cesu8(text.into(), variant)
+        let s = text.into();
+        encoding::utf8_as_cesu8(&s, variant)
+            .map(|()| {
+                Cesu8Str {
+                    variant,
+                    bytes: match s {
+                        Cow::Borrowed(s) => Cow::Borrowed(s.as_bytes()),
+                        Cow::Owned(s) => Cow::Owned(s.into_bytes()),
+                    },
+                    // would have returned Err(_) if there was a utf8/cesu8 incompatibility
+                    utf8_error: Ok(())
+                }
+            })
     }
 
     /// Creates a Cesu8Str into a provided buffer. Alternatively, the string could borrow from the original string if it is valid CESU8.

@@ -1,22 +1,17 @@
-use std::borrow::Cow;
 use std::io;
 use std::str::Utf8Error;
 
 use crate::decoding::TAG_CONT_U8;
-use crate::string::Cesu8Str;
 use crate::unicode::utf8_char_width;
 use crate::Cesu8Error;
 use crate::Variant;
 
 /// Validates UTF-8 string as CESU-8, erroring if any non-CESU-8 sequences are found.
 pub(crate) fn utf8_as_cesu8_spec<const ENCODE_NUL: bool>(
-    text: Cow<'_, str>,
-) -> Result<Cesu8Str<'_>, Cesu8Error> {
+    text: &str,
+) -> Result<(), Cesu8Error> {
     let mut i = 0;
-    let text_bytes = match text {
-        Cow::Borrowed(b) => Cow::Borrowed(b.as_bytes()),
-        Cow::Owned(b) => Cow::Owned(b.into_bytes()),
-    };
+    let text_bytes = text.as_bytes();
     while i < text_bytes.len() {
         // eprintln!("[{}:{}, encode_nul = {}] i = {}, slice = {:?}, whole = {:?}", file!(), line!(), ENCODE_NUL, i, &text_bytes[i..], &text_bytes);
         let b = text_bytes[i];
@@ -44,19 +39,15 @@ pub(crate) fn utf8_as_cesu8_spec<const ENCODE_NUL: bool>(
         i += w;
     }
 
-    Ok(Cesu8Str {
-        variant: ENCODE_NUL.into(),
-        // would have returned Err(_) if there was a utf8/cesu8 incompatibility
-        utf8_error: Ok(()),
-        bytes: text_bytes,
-    })
+    Ok(())
 }
 
+/// Validates UTF-8 string as CESU-8, erroring if any non-CESU-8 sequences are found.
 #[inline]
 pub(crate) fn utf8_as_cesu8(
-    text: Cow<'_, str>,
+    text: &str,
     variant: Variant,
-) -> Result<Cesu8Str<'_>, Cesu8Error> {
+) -> Result<(), Cesu8Error> {
     match variant {
         Variant::Standard => utf8_as_cesu8_spec::<false>(text),
         Variant::Java => utf8_as_cesu8_spec::<true>(text),
@@ -82,7 +73,7 @@ pub(crate) unsafe fn utf8_to_cesu8_spec<W: io::Write, const ENCODE_NUL: bool>(
     if assume_good != 0 {
         // check that this is correct on debug builds
         debug_assert_eq!(
-            utf8_as_cesu8_spec::<ENCODE_NUL>(Cow::Borrowed(text))
+            utf8_as_cesu8_spec::<ENCODE_NUL>(text)
                 .unwrap_err()
                 .valid_up_to(),
             assume_good,

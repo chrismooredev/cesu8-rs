@@ -118,7 +118,7 @@ impl Mutf8CStr {
         Self::_from_mutf8_cstr_unchecked(cs)
     }
 
-    /// Converts a `Mutf8CStr` to a <code>[Cow]<[str]></code>. The returned string will not contain a nul-terminator.
+    /// Converts a `Mutf8CStr` to a <code>[Cow]<[prim@str]></code>. The returned string will not contain a nul-terminator.
     /// 
     /// Allocates if the contained MUTF-8 is not valid UTF-8:
     /// * Contains encoded nul bytes
@@ -174,21 +174,20 @@ impl Mutf8CStr {
             [rest @ .., b'\0'] => rest,
 
             // either zero-length or no ending nul byte
-            [..] => panic!("string passed to Mutf8CStr::from_utf8_with_nul is not nul terminated: {:s?}"),
+            [..] => panic!("string passed to Mutf8CStr::from_utf8_with_nul is not nul terminated: {s:?}"),
         };
 
-        if data.contains(&b'\0') {
-            panic!("string passed to Mutf8CStr::from_utf8_with_nul contained an interior nul: {:s?}");
-        }
-
         let data_utf8 = &s[..s.len()-1];
-        let utf8_as_cesu8 = crate::encoding::utf8_as_cesu8_spec::<true>(Cow::Borrowed(data_utf8));
+        let utf8_as_cesu8 = crate::encoding::utf8_as_cesu8_spec::<true>(&data_utf8);
         let mutf8 = match utf8_as_cesu8 {
             // Safety: validated that all bytes (except nul-terminator) are valid CESU8, while also being UTF8
             // so pass the string as bytes, including the required nul-terminator
-            Ok(_) => Cow::Borrowed(unsafe { Mutf8CStr::_from_bytes_with_nul_unchecked(s.as_bytes()) }),
+            Ok(()) => Cow::Borrowed(unsafe { Mutf8CStr::_from_bytes_with_nul_unchecked(s.as_bytes()) }),
             Err(e) => {
-                
+                if s.len() >= e.valid_up_to && s.as_bytes()[e.valid_up_to] == b'\0' {
+                    panic!("string passed to Mutf8CStr::from_utf8_with_nul contained an interior nul: {s:?}");
+                }
+
                 // Safety: We've pre-checked that `data_utf8[..e.valid_up_to]` is valid CESU-8, continue from there,
                 // reencoding as necessary
                 Cow::Owned(unsafe {
@@ -401,9 +400,10 @@ impl Mutf8CStr {
     /// # }
     /// ```
     pub fn is_empty(&self) -> bool {
+        debug_assert_eq!(self.inner.last(), Some(&b'\0'), "Mutf8CStr does not have a nul-terminator");
         // SAFETY: We know there is at least one byte; for empty strings it
         // is the NUL terminator.
-        (unsafe { self.inner.get_unchecked(0) }) == &0
+        (unsafe { self.inner.get_unchecked(0) }) == &b'\0'
     }
 
     /// Converts this MUTF-8 C string to a byte slice.
@@ -424,6 +424,7 @@ impl Mutf8CStr {
     /// assert_eq!(mutf8str.to_bytes(), b"foo");
     /// ```
     pub fn to_bytes(&self) -> &[u8] {
+        debug_assert_eq!(self.inner.last(), Some(&b'\0'), "Mutf8CStr does not have a nul-terminator");
         let bytes = self.to_bytes_with_nul();
         // SAFETY: to_bytes_with_nul returns slice with length at least 1
         unsafe { bytes.get_unchecked(..bytes.len() - 1) }
