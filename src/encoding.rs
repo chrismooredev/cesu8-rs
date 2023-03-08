@@ -1,7 +1,7 @@
 use std::io;
 use std::str::Utf8Error;
 
-use crate::decoding::TAG_CONT_U8;
+use crate::ngstr::prims::enc_surrogates;
 use crate::unicode::utf8_char_width;
 use crate::Cesu8Error;
 use crate::Variant;
@@ -19,7 +19,7 @@ pub(crate) fn utf8_as_cesu8_spec<const ENCODE_NUL: bool>(
             return Err(Cesu8Error::new(i, Some(1), Ok(())));
         }
 
-        // ascii fast-path
+        // ascii "fast-path"
         if b.is_ascii() {
             i += 1;
             continue;
@@ -203,33 +203,7 @@ pub(crate) unsafe fn utf8_to_cesu8<W: io::Write>(
     }
 }
 
-#[inline]
-pub(crate) fn enc_surrogates<C: Into<u32>>(ch: C) -> [u8; 6] {
-    // encode `ch` into a supplementary UTF-16 pair (`high` and `low`), then convert the raw pair data to (invalid) UTF-8
 
-    let c = ch.into() - 0x10000;
-    let high = enc_surrogate(((c >> 10) as u16) | 0xD800);
-    let low = enc_surrogate(((c & 0x3FF) as u16) | 0xDC00);
-
-    [high[0], high[1], high[2], low[0], low[1], low[2]]
-}
-
-/// Encode a single surrogate as CESU-8.
-#[inline]
-fn enc_surrogate(surrogate: u16) -> [u8; 3] {
-    if cfg!(debug_assertions) || cfg!(validate_release) {
-        assert!(
-            (0xD800..=0xDFFF).contains(&surrogate),
-            "trying to encode invalid surrogate pair"
-        );
-    }
-    // 1110xxxx 10xxxxxx 10xxxxxx
-    [
-        0b11100000 | ((surrogate & 0b1111_0000_0000_0000) >> 12) as u8,
-        TAG_CONT_U8 | ((surrogate & 0b0000_1111_1100_0000) >> 6) as u8,
-        TAG_CONT_U8 | (surrogate & 0b0000_0000_0011_1111) as u8,
-    ]
-}
 
 /// There is no way to create a Utf8Error outside the stdlibrary, so unsafely artifically create one
 ///

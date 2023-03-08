@@ -5,16 +5,16 @@ use std::io;
 use std::str::Utf8Error;
 
 use crate::decoding;
-use crate::decoding::from_utf8_slice;
-use crate::decoding::from_utf8_vec;
+use crate::from_utf8_slice;
+use crate::from_utf8_vec;
 use crate::encoding;
-#[cfg(test)]
-use crate::encoding::enc_surrogates;
 use crate::encoding::utf8err_inc;
 #[cfg(test)]
 use crate::encoding::utf8err_new;
 use crate::Cesu8Error;
 use crate::Variant;
+#[cfg(test)]
+use crate::ngstr::prims::{dec_surrogates, enc_surrogates};
 
 const UTF8_REPLACEMENT_CHAR: &[u8] = "\u{FFFD}".as_bytes();
 #[test]
@@ -568,13 +568,13 @@ fn test_encoded_same(text: &str, expected: &[u8]) {
 
 #[cfg(test)]
 fn test_surrogates(ch: char, expected: &[u8; 6]) {
-    let encoded = encoding::enc_surrogates(ch);
+    let encoded = enc_surrogates(ch as u32);
     assert_eq!(
         expected, &encoded,
         "enc_surrogates returned unexpected encoded character"
     );
 
-    let decoded = decoding::dec_surrogates(encoded[1], encoded[2], encoded[4], encoded[5]);
+    let decoded = dec_surrogates::<true>(encoded[1], encoded[2], encoded[4], encoded[5]).unwrap();
     let decoded_ch = std::str::from_utf8(&decoded)
         .expect("dec_surrogates returned invalid UTF-8")
         .chars()
@@ -611,7 +611,7 @@ fn supplementary_pairs() {
     // TODO: Use a variety of different characters? (though all 4-byte chars should be handled exactly the same)
     assert_eq!("🟣".len(), 4);
     assert_eq!("🟣".as_bytes(), b"\xf0\x9f\x9f\xa3");
-    assert_eq!(&enc_surrogates('🟣'), b"\xED\xA0\xBD\xED\xBF\xA3");
+    assert_eq!(&enc_surrogates('🟣' as u32), b"\xED\xA0\xBD\xED\xBF\xA3");
 
     // These should encode as the same, whether its java variant or not
     test_encoded_same("plain", b"plain");

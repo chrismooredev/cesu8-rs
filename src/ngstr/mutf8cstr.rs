@@ -1,24 +1,14 @@
 
-use std::borrow::Cow;
-use std::str;
+use std::ops::Deref;
 use std::fmt;
 use std::ffi::c_char;
 use std::hash::Hash;
-
-
-// Cesu8Str
-// Cesu8String
-// Cesu8CStr
-// Cesu8CString
-// Mutf8CStr
-// Mutf8CString
-
 use std::ffi::CStr;
 
-use crate::Cesu8Str;
-use crate::Mutf8CString;
+use crate::Mutf8Str;
 
-use super::NGCesu8CError;
+use super::BaseCesu8StrEncoding;
+use super::Cesu8CStrEncoding;
 
 /// An error indicating that nul byte was not in the expected position
 /// 
@@ -113,202 +103,37 @@ pub struct Mutf8CStr {
     // we can consider moving this over when they do.
     inner: [u8],
 }
+impl BaseCesu8StrEncoding for Mutf8CStr {
+    const ENCODE_NUL: bool = true;
+    const NUL_TERM: bool = true;
 
-// custom impls
-impl Mutf8CStr {
     /// Uses pointer magic to transmute a byte slice to an instance of Mutf8CStr
     /// 
     /// # Safety
     /// The CStr should be encoded in nul-terminated MUTF8. That is, UTF8 with 4-byte-sequences re-encoded as 2, 3-byte sequences,
     /// and with nul bytes re-encoded as as [0xC0, 0x80]
-    unsafe fn _from_bytes_with_nul_unchecked(bytes: &[u8]) -> &Mutf8CStr {
+    unsafe fn _from_bytes_unchecked(bytes: &[u8]) -> &Self {
         // &[u8]
         // *const [u8]
         // *const Mutf8Str
         // &Mutf8Str
 
         // should be a no-op
-
-        &*(bytes as *const [u8] as *const Mutf8CStr)
+        &*(bytes as *const [u8] as *const Self)
     }
 
-    /// Uses pointer magic to transmute an instance of CStr to an instance of Mutf8CStr
-    /// 
-    /// # Safety
-    /// The CStr should be encoded in MUTF8. That is, UTF8 with 4-byte-sequences re-encoded as 2, 3-byte sequences,
-    /// and with nul bytes re-encoded as as [0xC0, 0x80]
-    const unsafe fn _from_mutf8_cstr_unchecked(cs: &CStr) -> &Mutf8CStr {
-        // &CStr
-        // *const CStr
-        // *const [u8]
-        // *const Mutf8Str
-        // &Mutf8Str
-
-        // should be a no-op
-
-        &*(cs as *const CStr as *const [u8] as *const Mutf8CStr)
-    }
-
-    /// Uses pointer magic to transmute an instance of Mutf8CStr to an instance of CStr
-    const fn _into_mutf8_cstr_unchecked(&self) -> &CStr {
-        // &Mutf8CStr
-        // *const Mutf8CStr
-        // *const [u8]
-        // *const CStr
-        // &CStr
-
-        // should be a no-op
-
+    fn _raw_bytes(&self) -> &[u8] {
         unsafe { 
-            &*(self as *const Mutf8CStr as *const [u8] as *const CStr)
+            &*(self as *const Self as *const [u8])
         }
     }
-
-    /// Uses pointer magic to transmute an instance of CStr to an instance of Mutf8CStr
-    /// 
-    /// # Safety
-    /// The CStr should be encoded in MUTF8. That is, UTF8 with 4-byte-sequences re-encoded as 2, 3-byte sequences,
-    /// and with nul bytes re-encoded as as [0xC0, 0x80]
-    unsafe fn from_cstr_unchecked(cs: &CStr) -> &Mutf8CStr {
-        if cfg!(debug_assertions) {
-            // always validate cesu8 as mutf8/encoded nuls => cannot have nul bytes within a CStr
-            match crate::decoding::cesu8_validate::<true>(cs.to_bytes()) {
-                Ok(_) => {
-                    // good cesu8, possibly bad utf8
-                },
-                Err(e) => {
-                    let preview = std::string::String::from_utf8_lossy(cs.to_bytes());
-                    panic!(concat!(
-                        "attempted to create an Mutf8CStr from a non-Mutf8 c string with from_ptr!",
-                        " (ptr = {:p}, orig_str_preview = {:?}, error = {:?})"),
-                        cs.as_ptr(), preview, e
-                    );
-                }
-            }
-        }
-
-        Self::_from_mutf8_cstr_unchecked(cs)
-    }
-
-    /// Converts a `Mutf8CStr` to a <code>[Cow]<[prim@str]></code>. The returned string will not contain a nul-terminator.
-    /// 
-    /// Allocates if the contained MUTF-8 is not valid UTF-8:
-    /// * Contains encoded nul bytes
-    /// * Contains 4-byte UTF-8 sequences encoded as 3-byte surrogate pairs
-    pub fn to_string(&self) -> Cow<str> {
-        let bytes = self.to_bytes();
-        let cesu = Cesu8Str::from_cesu8(bytes, crate::Variant::Java).expect("found invalid CESU8 within Mutf8CStr");
-        match cesu.utf8_error {
-            Ok(()) => Cow::Borrowed(crate::decoding::from_utf8_slice(
-                bytes,
-                "utf8_err was not updated/set correctly",
-            )),
-            Err(_) => Cow::Owned(crate::decoding::cesu8_to_utf8(&cesu)),
-        }
-    }
-
-
-
-    /// Extracts a [`CStr`] slice containing the entire string.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use std::ffi::{CString, CStr};
-    ///
-    /// let c_string = CString::new(b"foo".to_vec()).expect("CString::new failed");
-    /// let cstr = c_string.as_c_str();
-    /// assert_eq!(cstr,
-    ///            CStr::from_bytes_with_nul(b"foo\0").expect("CStr::from_bytes_with_nul failed"));
-    /// ```
-    pub fn as_c_str(&self) -> &CStr {
-        self._into_mutf8_cstr_unchecked()
-    }
-
-    /// The length of the MUTF8 string in bytes, excluding the terminating nul byte.
-    pub fn len(&self) -> usize {
-        self.inner.len() - 1
-    }
-
-    /// The length of the MUTF8 string in bytes, including the terminating nul byte.
-    pub fn len_with_nul(&self) -> usize {
-        self.inner.len()
-    }
-
-    /// Creates an Mutf8CStr that may nor may not allocate. Must be terminated by a singular nul byte. No other nul
-    /// bytes may exist in the string. Will only allocate if 4-byte utf8 sequences exist.
-    /// 
-    /// # Panics
-    /// Panics if the string is not terminated with a nul-byte, or contains nul bytes outside the last character.
-    #[inline]
-    pub fn from_utf8_with_nul(s: &str) -> Cow<Mutf8CStr> {
-        let data: &[u8] = match s.as_bytes() {
-            [rest @ .., b'\0'] => rest,
-
-            // either zero-length or no ending nul byte
-            [..] => panic!("string passed to Mutf8CStr::from_utf8_with_nul is not nul terminated: {s:?}"),
-        };
-
-        let data_utf8 = &s[..s.len()-1];
-        let utf8_as_cesu8 = crate::encoding::utf8_as_cesu8_spec::<true>(&data_utf8);
-        let mutf8 = match utf8_as_cesu8 {
-            // Safety: validated that all bytes (except nul-terminator) are valid CESU8, while also being UTF8
-            // so pass the string as bytes, including the required nul-terminator
-            Ok(()) => Cow::Borrowed(unsafe { Mutf8CStr::_from_bytes_with_nul_unchecked(s.as_bytes()) }),
-            Err(e) => {
-                if s.len() >= e.valid_up_to && s.as_bytes()[e.valid_up_to] == b'\0' {
-                    panic!("string passed to Mutf8CStr::from_utf8_with_nul contained an interior nul: {s:?}");
-                }
-
-                // Safety: We've pre-checked that `data_utf8[..e.valid_up_to]` is valid CESU-8, continue from there,
-                // reencoding as necessary
-                Cow::Owned(unsafe {
-                    let mut v = Vec::with_capacity(crate::default_cesu8_capacity(s.len()));
-                    let _utf8_err = crate::encoding::utf8_to_cesu8_spec::<_, true>(data_utf8, e.valid_up_to, &mut v).unwrap();
-                    v.push(b'\0'); // add back the nul-byte
-                    Mutf8CString::from_mutf8_vec_unchecked(v)
-                })
-            }
-        };
-        
-        mutf8
-    }
+}
+impl Cesu8CStrEncoding for Mutf8CStr {
+    
 }
 
 // heavily adjusted copies from std::ffi::CStr
 impl Mutf8CStr {
-    /// Wraps a raw C string with a safe C mutf8 encoded wrapper.
-    /// 
-    /// # Safety
-    /// * The memory pointed to by `ptr` must contain a valid nul terminator at the end of the string.
-    /// * `ptr` must be [valid] for reads of bytes up to and including the null terminator.
-    ///   In particular:
-    ///     * The entire memory range of this `Mutf8Cstr` must be contained within a single allocated object
-    ///     * `ptr` must be non-null even for a zero-length mutf8 string
-    /// * The memory referenced by the returned `Mutf8CStr` must not be mutated for the duration of lifetime `'a`.
-    /// * The size of the string is at most `isize::MAX`
-    /// 
-    /// Note the following additions to the traditional `CStr` type:
-    /// * The memory pointed to be `ptr` must be valid Modified UTF-8.
-    /// In comparison to UTF-8:
-    ///    * nul bytes (`'\0'`) are converted to the null byte sequence (`[0xC0, 0x80]`)
-    ///    * four-byte codepoints are converted into the appropriate surrogate pairs
-    /// 
-    /// # Caveat
-    ///
-    /// The lifetime for the returned slice is inferred from its usage. To prevent accidental misuse,
-    /// it's suggested to tie the lifetime to whichever source lifetime is safe in the context,
-    /// such as by providing a helper function taking the lifetime of a host value for the slice,
-    /// or by explicit annotation.
-    /// 
-    /// [valid]: core::ptr#safety
-    pub unsafe fn from_ptr<'a>(ptr: *const c_char) -> &'a Self {
-        let cs = CStr::from_ptr(ptr);
-
-        // SAFETY: Caller guarantees that needed by CStr/our own encoding
-        // and transmute_from_str will also validate in debug mode
-        Self::from_cstr_unchecked(cs)
-    }
 
     /// Creates an MUTF-8 C string wrapper from a byte slice.
     ///
@@ -346,56 +171,8 @@ impl Mutf8CStr {
     /// let mutf8cstr = Mutf8CStr::from_bytes_with_nul(b"he\0llo\0");
     /// assert!(mutf8cstr.is_err());
     /// ```
-    pub fn from_bytes_with_nul(bytes: &[u8]) -> Result<&Self, NGCesu8CError> {
-        // quick-path if empty or not nul-terminated
-        let data: &[u8] = match bytes {
-            [rest @ .., b'\0'] => Ok(rest),
+    pub fn _placeholder0() {}
 
-            // either zero-length or no ending nul byte
-            [..] => Err(NGCesu8CError::NotNulTerminated),
-        }?;
-        
-        match crate::decoding::cesu8_validate::<true>(data) {
-            Ok(_) => {
-                // SAFETY: We know it is a valid string. The encoding validates no interior nuls, and the previous
-                // check ensures the last byte is a nul terminator. we've also validated for MUTF8
-                Ok(unsafe { Mutf8CStr::_from_bytes_with_nul_unchecked(bytes) })
-            },
-            Err(e) => {
-                Err(NGCesu8CError::Encoding(e))
-            }
-        }
-    }
-
-    /// Unsafely creates an MUTF-8 C string wrapper from a byte slice.
-    ///
-    /// This function will cast the provided `bytes` to a `Mutf8CStr` wrapper without
-    /// performing any sanity checks.
-    ///
-    /// # Safety
-    /// The provided slice **must** be nul-terminated and not contain any interior
-    /// nul bytes while being encoded as mutf8.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cesu8str::{Mutf8CStr, Mutf8CString};
-    ///
-    /// unsafe {
-    ///     let mutf8cstring = Mutf8CString::new("hello").expect("Mutf8CString::new failed");
-    ///     let mutf8cstr = Mutf8CStr::from_bytes_with_nul_unchecked(mutf8cstring.to_bytes_with_nul());
-    ///     assert_eq!(mutf8cstr, &*mutf8cstring);
-    /// }
-    /// ```
-    pub unsafe fn from_bytes_with_nul_unchecked(bytes: &[u8]) -> &Mutf8CStr {
-        if cfg!(debug_assertions) {
-            if let Err(e) = Self::from_bytes_with_nul(bytes) {
-                panic!("bad string passed to from_bytes_with_nul_unchecked: {:?}", e);
-            }
-        }
-        
-        Mutf8CStr::_from_bytes_with_nul_unchecked(bytes)
-    }
 }
 
 // mostly copied from std::ffi::CStr
@@ -524,36 +301,11 @@ impl Mutf8CStr {
         // is safe on all supported targets.
         unsafe { &*(&self.inner as *const [u8]) }
     }
-
-    /// Yields a <code>&[str]</code> slice if the `Mutf8CStr` contains valid UTF-8.
-    ///
-    /// If the contents of the `Mutf8CStr` are valid UTF-8 data, this
-    /// function will return the corresponding <code>&[str]</code> slice. Otherwise,
-    /// it will return an error with details of where UTF-8 validation failed.
-    ///
-    /// [str]: prim@str "str"
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use cesu8str::Mutf8CStr;
-    ///
-    /// let mutf8str = Mutf8CStr::from_bytes_with_nul(b"foo\0").expect("Mutf8CStr::from_bytes_with_nul failed");
-    /// assert_eq!(mutf8str.to_str(), Ok("foo"));
-    /// ```
-    pub fn to_str(&self) -> Result<&str, str::Utf8Error> {
-        // N.B., when `CStr` is changed to perform the length check in `.to_bytes()`
-        // instead of in `from_ptr()`, it may be worth considering if this should
-        // be rewritten to do the UTF-8 check inline with the length calculation
-        // instead of doing it afterwards.
-        str::from_utf8(self.to_bytes())
-    }
 }
+
 impl fmt::Debug for Mutf8CStr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // TODO: turn this into a more iterator-focused view, possibly stack allocate
-        let rs_str = self.to_string();
-        write!(f, "{:?}", &rs_str)
+        write!(f, "{:?}", &self.to_str())
     }
 }
 impl Default for &Mutf8CStr {
@@ -565,15 +317,17 @@ impl Default for &Mutf8CStr {
 }
 impl fmt::Display for Mutf8CStr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // TODO: turn this into a more iterator-focused view, possibly stack allocate
-        let rs_str = self.to_string();
-        write!(f, "{}", &rs_str)
+        f.write_str(&self.to_str())
     }
 }
 impl Hash for Mutf8CStr {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // TODO: turn this into a more iterator-focused view, possibly stack allocate
-        self.to_string().hash(state);
+        self.to_str().hash(state);
     }
 }
-
+impl Deref for Mutf8CStr {
+    type Target = Mutf8Str;
+    fn deref(&self) -> &Self::Target {
+        unsafe { Mutf8Str::_from_bytes_unchecked(self.as_bytes()) }
+    }
+}

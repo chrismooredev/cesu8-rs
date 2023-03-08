@@ -6,16 +6,16 @@ use std::fmt;
 use std::num::NonZeroUsize;
 use std::str::Utf8Error;
 
+use crate::from_utf8_slice;
+use crate::from_utf8_vec;
 use crate::encoding::utf8_as_cesu8_spec;
 use crate::encoding::utf8err_inc;
 use crate::encoding::utf8err_new;
+use crate::ngstr::prims::CONT_MASK;
+use crate::ngstr::prims::TAG_CONT_U8;
+use crate::ngstr::prims::dec_surrogates_infallable;
 use crate::string::Cesu8Str;
 use crate::Variant;
-
-/// Mask of the value bits of a continuation byte.
-const CONT_MASK: u8 = 0b0011_1111u8;
-/// Value of the tag bits (tag mask is !CONT_MASK) of a continuation byte.
-pub(crate) const TAG_CONT_U8: u8 = 0b1000_0000u8;
 
 /// Errors which can occur when attempting to interpret a `str` or sequence
 /// of `u8` as a CESU8 string.
@@ -234,39 +234,7 @@ pub(crate) fn cesu8_to_utf8_const<const ENCODE_NUL: bool>(cesu: &Cesu8Str<'_>) -
                     // assert our continuation bytes are indeed continuations
                     // assert our second & fifth bytes are on the right side of each other
 
-                    debug_assert!(
-                        (second & !CONT_MASK) == TAG_CONT_U8,
-                        "expected surrogate pair, recieved something else (err bytes[..6]: {:x?})",
-                        &rest[..6]
-                    );
-                    debug_assert!(
-                        (second & 0b1111_0000) == 0b1010_0000,
-                        "expected surrogate pair, recieved something else (err bytes[..6]: {:x?})",
-                        &rest[..6]
-                    );
-                    debug_assert!(
-                        (third & !CONT_MASK) == TAG_CONT_U8,
-                        "expected surrogate pair, recieved something else (err bytes[..6]: {:x?})",
-                        &rest[..6]
-                    );
-
-                    debug_assert!(
-                        (fifth & !CONT_MASK) == TAG_CONT_U8,
-                        "expected surrogate pair, recieved something else (err bytes[..6]: {:x?})",
-                        &rest[..6]
-                    );
-                    debug_assert!(
-                        (fifth & 0b1111_0000) == 0b1011_0000,
-                        "expected surrogate pair, recieved something else (err bytes[..6]: {:x?})",
-                        &rest[..6]
-                    );
-                    debug_assert!(
-                        (sixth & !CONT_MASK) == TAG_CONT_U8,
-                        "expected surrogate pair, recieved something else (err bytes[..6]: {:x?})",
-                        &rest[..6]
-                    );
-
-                    let utf8bytes: [u8; 4] = dec_surrogates(second, third, fifth, sixth);
+                    let utf8bytes: [u8; 4] = dec_surrogates_infallable(second, third, fifth, sixth);
 
                     dest.push_str(from_utf8_slice(
                         &utf8bytes,
@@ -447,36 +415,7 @@ pub(crate) fn cesu8_validate<const ENCODE_NUL: bool>(
     Ok(first_utf8_error)
 }
 
-/// Convert the two trailing bytes from a CESU-8 surrogate to a regular
-/// surrogate value.
-fn dec_surrogate(second: u8, third: u8) -> u32 {
-    0xD000u32 | ((second & CONT_MASK) as u32) << 6 | (third & CONT_MASK) as u32
-}
 
-/// Convert the bytes from a CESU-8 surrogate pair into a valid UTF-8
-/// sequence.  Assumes input is valid.
-pub(crate) fn dec_surrogates(second: u8, third: u8, fifth: u8, sixth: u8) -> [u8; 4] {
-    // Convert to a 32-bit code point.
-    let s1 = dec_surrogate(second, third);
-    let s2 = dec_surrogate(fifth, sixth);
-    let c = 0x10000 + (((s1 - 0xD800) << 10) | (s2 - 0xDC00));
-    //println!("{:0>8b} {:0>8b} {:0>8b} -> {:0>16b}", 0xEDu8, second, third, s1);
-    //println!("{:0>8b} {:0>8b} {:0>8b} -> {:0>16b}", 0xEDu8, fifth, sixth, s2);
-    //println!("-> {:0>32b}", c);
-    assert!(
-        (0x010000..=0x10FFFF).contains(&c),
-        "attempt to decode invalid cesu-8 6-byte surrogate pair"
-    );
-
-    // Convert to UTF-8.
-    // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
-    [
-        0b1111_0000u8 | ((c & 0b1_1100_0000_0000_0000_0000) >> 18) as u8,
-        TAG_CONT_U8 | ((c & 0b0_0011_1111_0000_0000_0000) >> 12) as u8,
-        TAG_CONT_U8 | ((c & 0b0_0000_0000_1111_1100_0000) >> 6) as u8,
-        TAG_CONT_U8 | (c & 0b0_0000_0000_0000_0011_1111) as u8,
-    ]
-}
 
 /// Given a byte buffer and a byte index, returns a Cesu8DecodingError that
 /// states `&bytes[..start]` is valid, and that the error lasts until the
@@ -497,25 +436,6 @@ fn until_next_codepoint(bytes: &[u8], start: usize, utf8_err: Result<(), Utf8Err
         "next valid index may be after chunk - need more data?"
     );
     Cesu8Error::new(start, Some(skip), utf8_err)
-}
-
-#[inline]
-#[track_caller]
-pub(crate) fn from_utf8_slice<'s>(by: &'s [u8], expect_msg: &'_ str) -> &'s str {
-    if cfg!(debug_assertions) || cfg!(validate_release) {
-        std::str::from_utf8(by).expect(expect_msg)
-    } else {
-        unsafe { std::str::from_utf8_unchecked(by) }
-    }
-}
-#[inline]
-#[track_caller]
-pub(crate) fn from_utf8_vec(by: Vec<u8>, expect_msg: &str) -> String {
-    if cfg!(debug_assertions) || cfg!(validate_release) {
-        String::from_utf8(by).expect(expect_msg)
-    } else {
-        unsafe { String::from_utf8_unchecked(by) }
-    }
 }
 
 #[test]

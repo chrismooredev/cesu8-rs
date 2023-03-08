@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 
-use crate::{Cesu8Error, Cesu8Str, Variant};
+use crate::ngstr::prims::EncodingError;
+use crate::{Cesu8Error, Cesu8Str, Variant, Mutf8Str};
+use crate::preamble::*;
 
 /// Convert CESU-8 data to a Rust string, re-encoding only if necessary.
 /// Returns an error if the data cannot be represented as valid UTF-8.
@@ -48,8 +50,9 @@ pub fn from_cesu8(bytes: &[u8]) -> Result<Cow<str>, Cesu8Error> {
 /// assert_eq!(Cow::Borrowed("\0\0"),
 ///            from_java_cesu8(data).unwrap());
 /// ```
-pub fn from_java_cesu8(bytes: &[u8]) -> Result<Cow<str>, Cesu8Error> {
-    Cesu8Str::from_cesu8(bytes, Variant::Java).map(|cesu| cesu.into_str())
+pub fn from_java_cesu8(bytes: &[u8]) -> Result<Cow<str>, EncodingError> {
+    Mutf8Str::try_from_bytes(bytes)
+        .map(|s| s.to_str())
 }
 
 #[test]
@@ -120,7 +123,10 @@ pub fn to_cesu8(text: &str) -> Cow<[u8]> {
 ///            to_java_cesu8("\0\0"));
 /// ```
 pub fn to_java_cesu8(text: &str) -> Cow<[u8]> {
-    Cesu8Str::from_utf8(text, Variant::Java).bytes
+    match Mutf8Str::from_utf8(text) {
+        Cow::Borrowed(b) => Cow::Borrowed(b.as_bytes()),
+        Cow::Owned(o) => Cow::Owned(o.into_bytes())
+    }
 }
 
 /// Check whether a Rust string contains valid CESU-8 data.
@@ -130,7 +136,7 @@ pub fn is_valid_cesu8(text: &str) -> bool {
 
 /// Check whether a Rust string contains valid Java's modified UTF-8 data.
 pub fn is_valid_java_cesu8(text: &str) -> bool {
-    Cesu8Str::try_from_utf8(text, Variant::Java).is_ok()
+    Mutf8Str::try_from_utf8(text).is_ok()
 }
 
 #[test]

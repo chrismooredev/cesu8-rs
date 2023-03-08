@@ -1,6 +1,9 @@
+#![feature(portable_simd)]
+#![feature(generic_const_exprs)]
+
 #![allow(clippy::let_unit_value)]
 #![allow(clippy::unit_arg)]
-#![warn(missing_docs)]
+// #![warn(missing_docs)]
 // Copyright 2012-2022 The Rust Project Developers and Eric Kidd and Christopher Moore.  See the
 // COPYRIGHT-RUST.txt file at the top-level directory of this distribution.
 //
@@ -87,10 +90,28 @@ mod string_impls;
 #[rustfmt::skip]
 mod unicode;
 
+/// # Next-generation strings
+/// 
+/// | `encode_nul` | `nul_terminated` | `mode` | `Output` |
+/// | - | - | - |- |
+/// | `false` | `false` | `borrowed` | `Cesu8Str` |
+/// | `false` | `false` | `owned` | `Cesu8String` |
+/// | `false` | `true` | `borrowed` | n/a |
+/// | `false` | `true` | `owned` | n/a |
+/// | `true` | `false` | `borrowed` | `Mutf8Str` |
+/// | `true` | `false` | `owned` | `Mutf8String` |
+/// | `true` | `true` | `borrowed` | `Mutf8CStr` |
+/// | `true` | `true` | `owned` | `Mutf8CString` |
+/// 
 mod ngstr;
+
+pub mod preamble {
+    pub use crate::ngstr::*;
+}
 
 pub use ngstr::{
     NGCesu8CError,
+    mutf8str::Mutf8Str,
     mutf8cstr::Mutf8CStr,
     mutf8cstr::FromStrWithNulError,
     mutf8cstring::Mutf8CString,
@@ -137,5 +158,25 @@ impl From<bool> for Variant {
             false => Variant::Standard,
             true => Variant::Java,
         }
+    }
+}
+
+#[inline]
+#[track_caller]
+pub(crate) fn from_utf8_slice<'s>(by: &'s [u8], expect_msg: &'_ str) -> &'s str {
+    if cfg!(debug_assertions) || cfg!(validate_release) {
+        std::str::from_utf8(by).expect(expect_msg)
+    } else {
+        unsafe { std::str::from_utf8_unchecked(by) }
+    }
+}
+
+#[inline]
+#[track_caller]
+pub(crate) fn from_utf8_vec(by: Vec<u8>, expect_msg: &str) -> String {
+    if cfg!(debug_assertions) || cfg!(validate_release) {
+        String::from_utf8(by).expect(expect_msg)
+    } else {
+        unsafe { String::from_utf8_unchecked(by) }
     }
 }
