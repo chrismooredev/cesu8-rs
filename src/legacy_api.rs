@@ -55,34 +55,6 @@ pub fn from_java_cesu8(bytes: &[u8]) -> Result<Cow<str>, EncodingError> {
         .map(|s| s.to_str())
 }
 
-#[test]
-fn test_from_cesu8() {
-    // The surrogate-encoded character below is from the ICU library's
-    // icu/source/test/testdata/conversion.txt test case.
-    let data = &[
-        0x4D, 0xE6, 0x97, 0xA5, 0xED, 0xA0, 0x81, 0xED, 0xB0, 0x81, 0x7F,
-    ];
-    assert_eq!(
-        Cow::Borrowed("M日\u{10401}\u{7F}"),
-        from_cesu8(data).unwrap()
-    );
-
-    // We used to have test data from the CESU-8 specification, but when we
-    // worked it through manually, we got the wrong answer:
-    //
-    // Input: [0xED, 0xAE, 0x80, 0xED, 0xB0, 0x80]
-    // Binary: 11101101 10101110 10000000 11101101 10110000 10000000
-    //
-    // 0b1101_101110_000000 -> 0xDB80
-    // 0b1101_110000_000000 -> 0xDC00
-    //
-    // ((0xDB80 - 0xD800) << 10) | (0xDC00 - 0xDC00) -> 0xE0000
-    // 0x10000 + 0xE0000 -> 0xF0000
-    //
-    // The spec claims that we are supposed to get 0x10000, not 0xF0000.
-    // Since I can't reconcile this example data with the text of the
-    // specification, I decided to use a test character from ICU instead.
-}
 
 /// Convert a Rust `&str` to CESU-8 bytes.
 ///
@@ -137,14 +109,4 @@ pub fn is_valid_cesu8(text: &str) -> bool {
 /// Check whether a Rust string contains valid Java's modified UTF-8 data.
 pub fn is_valid_java_cesu8(text: &str) -> bool {
     Mutf8Str::try_from_utf8(text).is_ok()
-}
-
-#[test]
-fn test_valid_cesu8() {
-    assert!(is_valid_cesu8("aé日"));
-    assert!(is_valid_java_cesu8("aé日"));
-    assert!(!is_valid_cesu8("\u{10401}"));
-    assert!(!is_valid_java_cesu8("\u{10401}"));
-    assert!(is_valid_cesu8("\0\0"));
-    assert!(!is_valid_java_cesu8("\0\0"));
 }

@@ -50,7 +50,10 @@ pub(crate) unsafe fn cesu8_to_utf8<const ENCODE_NUL: bool>(cesu: Cow<[u8]>) -> C
         }
     };
 
-    // track our current read/write indices. our resultant string will always be smaller.
+    // track our current read/write indices. our resultant string will always be smaller:
+    // [0xED, _, _, 0xED, _, _] is a 6-byte surrogate pair, which convert into UTF8 4-byte codepoints.
+    // [0xC0, 0x80] is a 2-byte encoded nul, which convert into a single nul byte.\
+
     // [..iw] is valid utf8, whats been written
     // [ir..] is the rest of the cesu8 string, what needs to be read
     // [iw..ir] is scratch space, invalid
@@ -85,7 +88,7 @@ pub(crate) unsafe fn cesu8_to_utf8<const ENCODE_NUL: bool>(cesu: Cow<[u8]>) -> C
                 "{} decoding error. expected {}surrogate pair, got something else. (string up to this point: {:?}, next few bytes: {:x?})",
                 strtype, encnulstr,
                 String::from_utf8_lossy(&cesu[..iw]), // lossy just in case - no need to double panic
-                &cesu[..cesu.len().min(16)],
+                &cesu[iw..cesu.len().min(iw+16)],
             );
         }
 
@@ -254,6 +257,7 @@ pub(crate) fn utf8_to_cesu8_io<const CHUNK_SIZE: usize, const ENCODE_NUL: bool, 
                 }
 
                 // explicitly do not update src string/consume char if the character was valid
+                // so check_utf8_to_cesu8 can operate on hint_bad_start
             }
         }
     }
@@ -472,9 +476,9 @@ pub(crate) fn dec_surrogates<const CHECK_INVALID: bool>(second: u8, third: u8, f
     // 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
     Ok([
         0b1111_0000u8 | ((c & 0b1_1100_0000_0000_0000_0000) >> 18) as u8,
-        TAG_CONT_U8 | ((c & 0b0_0011_1111_0000_0000_0000) >> 12) as u8,
-        TAG_CONT_U8 | ((c & 0b0_0000_0000_1111_1100_0000) >> 6) as u8,
-        TAG_CONT_U8 | (c & 0b0_0000_0000_0000_0011_1111) as u8,
+        TAG_CONT_U8   | ((c & 0b0_0011_1111_0000_0000_0000) >> 12) as u8,
+        TAG_CONT_U8   | ((c & 0b0_0000_0000_1111_1100_0000) >> 6) as u8,
+        TAG_CONT_U8   | ( c & 0b0_0000_0000_0000_0011_1111) as u8,
     ])
 }
 

@@ -123,6 +123,9 @@ pub use crate::legacy_api::*;
 pub use crate::string::Cesu8Str;
 pub(crate) use crate::string::default_cesu8_capacity;
 
+#[cfg(test)]
+mod tests;
+
 /// Which variant of the encoding are we working with?
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Variant {
