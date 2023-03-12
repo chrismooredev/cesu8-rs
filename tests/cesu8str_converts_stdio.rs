@@ -5,25 +5,11 @@ use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::ffi::OsStr;
 use std::fs::OpenOptions;
-use std::os::fd::AsFd;
 use std::path::PathBuf;
 use std::{fs, io, fmt};
 use std::fmt::Write as FmtWrite;
 use std::io::{Write, Read, BufReader, BufRead, Cursor};
 use std::process::{Stdio, ChildStdin, ChildStdout, Child, Output};
-
-// Must enable non-blocking read for subprocess stdout or we deadlock on input of partial codepoints
-// 
-// Tokio feels like too heavy of a dependency to bring in just for this
-// (PRs welcome for that if someone wants to develop it)
-#[cfg(not(unix))]
-compile_error!("Must use a unix platform for cesu8str_converts_stdio");
-
-#[cfg(not(feature = "build-binary"))]
-compile_error!("Must build test cesu8str_converts_stdio with 'build-binary'");
-
-// #[cfg(not(build_binary))]
-// compile_error!("Must build with --features=build-binary for cesu8str_converts_stdio");
 
 const UTF8: &str = "test_files/random.utf8.txt";
 const CESU8: &str = "test_files/random.cesu8.txt";
@@ -103,7 +89,16 @@ macro_rules! emit_test_case {
 }
 
 use rusty_fork::rusty_fork_test;
+
+#[cfg(all(unix, feature = "build-binary"))]
 emit_test_case!(entry);
+
+// Must enable non-blocking read for subprocess stdout or we deadlock on input of partial codepoints
+// 
+// Tokio feels like too heavy of a dependency to bring in just for this
+// (PRs welcome for that if someone wants to develop it)
+#[cfg(any(not(unix), not(feature = "build-binary")))]
+compile_error!("unable to run cesu8str_converts_stdio test on non-unix platform without build-binary feature");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InputMethod {
@@ -239,7 +234,7 @@ impl fmt::Debug for OutputStrategy {
     }
 }
 
-
+#[cfg(unix)]
 impl IOHandler for OutputHandler {
     type Method = OutputMethod;
     fn new(id: &'static str, method: OutputMethod, path: &'static str) -> OutputHandler {
@@ -282,7 +277,7 @@ impl IOHandler for OutputHandler {
         }
     }
     fn setup(&self, proc: &mut Child) {
-        if matches!(self.method, OutputMethod::FilePiped { .. }) && cfg!(unix) {
+        if matches!(self.method, OutputMethod::FilePiped { .. }) {
             // set IO as non-blocking
             use std::os::unix::io::AsRawFd;
             let fd = proc.stdout.as_mut().unwrap().as_raw_fd();
@@ -366,6 +361,8 @@ struct TestConfig {
     imethod: InputMethod,
     omethod: OutputMethod,
 }
+
+#[cfg(unix)]
 impl TestConfig {
     fn binary() -> &'static str {
         match option_env!("CARGO_BIN_EXE_cesu8str") {
@@ -428,7 +425,7 @@ impl TestConfig {
         };
         #[cfg(windows)]
         let stderr = unsafe {
-            use std::os::windows::io::{OwnedHandle, FromRawHandle};
+            use std::os::windows::io::{OwnedHandle, FromRawHandle, AsRawHandle};
             Stdio::from_raw_handle(stdout.as_raw_handle())
         };
         let stdio_err = Stdio::from(stderr);
