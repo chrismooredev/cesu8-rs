@@ -1,7 +1,5 @@
-use std::borrow::Cow;
 
-use crate::ngstr::prims::EncodingError;
-use crate::{Cesu8Error, Cesu8Str, Variant, Mutf8Str};
+use crate::Cesu8Error;
 use crate::preamble::*;
 
 /// Convert CESU-8 data to a Rust string, re-encoding only if necessary.
@@ -22,8 +20,14 @@ use crate::preamble::*;
 /// assert_eq!(Cow::Borrowed("\u{10401}"),
 ///            from_cesu8(data).unwrap());
 /// ```
-pub fn from_cesu8(bytes: &[u8]) -> Result<Cow<str>, Cesu8Error> {
-    Cesu8Str::from_cesu8(bytes, Variant::Standard).map(|cesu| cesu.into_str())
+pub fn from_ces8(bytes: &[u8]) -> Result<Cow<str>, Cesu8Error> {
+    Cesu8Str::try_from_bytes(bytes)
+        .map(|cesu| cesu.to_str())
+        .map_err(|ee| Cesu8Error {
+            valid_up_to: ee.valid_up_to(),
+            error_len: ee.error_len().map(|nzu8| nzu8.into()),
+            utf8_error: std::str::from_utf8(bytes).map(|_| ())
+        })
 }
 
 /// Convert Java's modified UTF-8 data to a Rust string, re-encoding only if
@@ -50,9 +54,14 @@ pub fn from_cesu8(bytes: &[u8]) -> Result<Cow<str>, Cesu8Error> {
 /// assert_eq!(Cow::Borrowed("\0\0"),
 ///            from_java_cesu8(data).unwrap());
 /// ```
-pub fn from_java_cesu8(bytes: &[u8]) -> Result<Cow<str>, EncodingError> {
+pub fn from_java_cesu8(bytes: &[u8]) -> Result<Cow<str>, Cesu8Error> {
     Mutf8Str::try_from_bytes(bytes)
-        .map(|s| s.to_str())
+        .map(|cesu| cesu.to_str())
+        .map_err(|ee| Cesu8Error {
+            valid_up_to: ee.valid_up_to(),
+            error_len: ee.error_len().map(|nzu8| nzu8.into()),
+            utf8_error: std::str::from_utf8(bytes).map(|_| ())
+        })
 }
 
 
@@ -72,7 +81,10 @@ pub fn from_java_cesu8(bytes: &[u8]) -> Result<Cow<str>, EncodingError> {
 ///            to_cesu8("\u{10401}"));
 /// ```
 pub fn to_cesu8(text: &str) -> Cow<[u8]> {
-    Cesu8Str::from_utf8(text, Variant::Standard).bytes
+    match Cesu8Str::from_utf8(text) {
+        Cow::Borrowed(b) => Cow::Borrowed(b.as_bytes()),
+        Cow::Owned(o) => Cow::Owned(o.into_bytes()),
+    }
 }
 
 /// Convert a Rust `&str` to Java's modified UTF-8 bytes.
@@ -103,7 +115,7 @@ pub fn to_java_cesu8(text: &str) -> Cow<[u8]> {
 
 /// Check whether a Rust string contains valid CESU-8 data.
 pub fn is_valid_cesu8(text: &str) -> bool {
-    Cesu8Str::try_from_utf8(text, Variant::Standard).is_ok()
+    Cesu8Str::try_from_utf8(text).is_ok()
 }
 
 /// Check whether a Rust string contains valid Java's modified UTF-8 data.
