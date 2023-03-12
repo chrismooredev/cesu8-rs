@@ -6,12 +6,8 @@ use std::fmt;
 use std::hash::Hash;
 
 use crate::Variant;
-use crate::ngstr::Cesu8CStrEncoding;
 
-use super::BaseCesu8StringEncoding;
-use super::Cesu8CStringEncoding;
-use super::NGCesu8CError;
-use super::mutf8cstr::Mutf8CStr;
+use super::preamble::*;
 
 /// The error when trying to create a Mutf8CString from a byte buffer.
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -47,12 +43,17 @@ impl FromMutf8BytesWithNulError {
 pub struct Mutf8CString {
     inner: Vec<u8>,
 }
-impl BaseCesu8StringEncoding for Mutf8CString {
-    unsafe fn _from_bytes_unchecked(v: Vec<u8>) -> Self {
+impl Mutf8CString {
+    impl_string_encoding_meths!(base);
+    impl_string_encoding_meths!(cstring);
+}
+
+impl Mutf8CString {
+    pub(crate) unsafe fn _from_bytes_unchecked(v: Vec<u8>) -> Self {
         Self { inner: v }
     }
 
-    fn _into_bytes_unchecked(self) -> Vec<u8> {
+    pub(crate) const fn _into_bytes_unchecked(self) -> Vec<u8> {
         // taken from std::ffi::CString::into_inner
 
         // Rationale: `mem::forget(self)` invalidates the previous call to `ptr::read(&self.inner)`
@@ -63,8 +64,6 @@ impl BaseCesu8StringEncoding for Mutf8CString {
         unsafe { std::ptr::read(&this.inner) }
     }
 
-}
-impl Cesu8CStringEncoding for Mutf8CString {
 }
 
 // custom impls
@@ -120,7 +119,7 @@ impl Mutf8CString {
     pub fn extend_from_mutf8(&mut self, string: &Mutf8CStr) {
         if string.is_empty() { return; }
         unsafe { Self::with_self_as_vec(self, |v| {
-            let nslice = string.to_bytes();
+            let nslice = string.as_bytes();
             v.reserve_exact(nslice.len() + 1);
             v.extend_from_slice(nslice);
         })}
@@ -223,12 +222,6 @@ impl Drop for Mutf8CString {
         unsafe {
             *self.inner.get_unchecked_mut(0) = 0;
         }
-    }
-}
-impl ToOwned for Mutf8CStr {
-    type Owned = Mutf8CString;
-    fn to_owned(&self) -> Self::Owned {
-        Mutf8CString { inner: self.to_bytes_with_nul().into() }
     }
 }
 impl Hash for Mutf8CString {

@@ -1,25 +1,25 @@
 
 use std::hash::Hash;
 
-use super::preamble::*;
+use crate::ngstr::preamble::*;
 
 /// A borrowed MUTF-8 string.
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
-pub struct Mutf8Str {
+pub struct Cesu8Str {
     inner: [u8],
 }
 
-impl Mutf8Str {
+impl Cesu8Str {
     impl_str_encoding_meths!(base);
     impl_str_encoding_meths!(str);
 }
 
-impl Mutf8Str {
-    pub const ENCODE_NUL: bool = true;
-    pub const NUL_TERM: bool = true;
+impl Cesu8Str {
+    pub const ENCODE_NUL: bool = false;
+    pub const NUL_TERM: bool = false;
 
-    /// Uses pointer magic to transmute a byte slice to an instance of Mutf8Str
+    /// Uses pointer magic to transmute a byte slice to an instance of Cesu8Str
     /// 
     /// # Safety
     /// The byte string should be encoded in MUTF8. That is, UTF8 with 4-byte-sequences re-encoded as 2, 3-byte
@@ -40,24 +40,23 @@ impl Mutf8Str {
     }
 }
 
-// don't impl Deref as it can make nul-terminator inclusion ambiguous for Mutf8CStr -> Mutf8Str -> [u8]
-impl ToOwned for Mutf8Str {
-    type Owned = Mutf8String;
+// don't impl Deref as it can make nul-terminator inclusion ambiguous
+impl ToOwned for Cesu8Str {
+    type Owned = Cesu8String;
     fn to_owned(&self) -> Self::Owned {
         // SAFETY: string has already been validated as mutf8
         unsafe { Self::Owned::from_bytes_unchecked(self.inner.to_vec()) }
     }
 }
-impl Hash for Mutf8Str {
+impl Hash for Cesu8Str {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         state.write(self.as_bytes());
         state.write_u8(0xff);
     }
 }
-impl Default for &Mutf8Str {
+impl Default for &Cesu8Str {
     fn default() -> Self {
         const EMPTY: &[u8] = &[];
-        unsafe { Mutf8Str::from_bytes_unchecked(EMPTY) }
+        unsafe { Cesu8Str::from_bytes_unchecked(EMPTY) }
     }
 }
-

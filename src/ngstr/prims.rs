@@ -2,6 +2,8 @@
 
 use std::error::Error;
 use std::fmt;
+use std::num::NonZeroU8;
+use std::num::NonZeroUsize;
 use std::simd::*;
 use std::io;
 use std::borrow::Cow;
@@ -304,17 +306,17 @@ pub fn utf8_to_cesu8_string<const CHUNK_SIZE: usize, const ENCODE_NUL: bool>(src
     Cow::Owned(dst)
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct EncodingError {
     pub(crate) valid_up_to: usize,
-    pub(crate) error_len: Option<usize>,
+    pub(crate) error_len: Option<NonZeroU8>,
 }
 
 impl EncodingError {
     pub fn valid_up_to(&self) -> usize {
         self.valid_up_to
     }
-    pub fn error_len(&self) -> Option<usize> {
+    pub fn error_len(&self) -> Option<NonZeroU8> {
         self.error_len
     }
 }
@@ -372,7 +374,7 @@ pub(crate) fn validate_cesu8<const CHUNK_SIZE: usize, const ENCODE_NUL: bool>(so
             // bad cesu8 in valid utf8
             (Some(i), _) => return Err(EncodingError {
                 valid_up_to: base + i,
-                error_len: Some(1),
+                error_len: Some(1.try_into().unwrap()),
             }),
 
             // both valid utf8/cesu8
@@ -404,7 +406,7 @@ pub(crate) fn validate_cesu8<const CHUNK_SIZE: usize, const ENCODE_NUL: bool>(so
                     // found no recognized sequence - passthrough utf8 error
                     Err(Some(())) => return Err(EncodingError {
                         valid_up_to: base,
-                        error_len: Some(bad_utf8_len),
+                        error_len: Some((bad_utf8_len as u8).try_into().unwrap()),
                     }),
                 }
             }

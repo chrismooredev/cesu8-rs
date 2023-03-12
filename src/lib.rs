@@ -1,5 +1,8 @@
 #![feature(portable_simd)]
 #![feature(generic_const_exprs)]
+#![feature(const_ptr_read)]
+#![feature(const_trait_impl)]
+#![feature(const_deref)]
 
 #![allow(clippy::let_unit_value)]
 #![allow(clippy::unit_arg)]
@@ -106,7 +109,7 @@ mod unicode;
 mod ngstr;
 
 pub mod preamble {
-    pub use crate::ngstr::*;
+    pub use crate::ngstr::preamble::*;
 }
 
 pub use ngstr::{

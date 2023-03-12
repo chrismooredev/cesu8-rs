@@ -1,23 +1,23 @@
 use std::borrow::Borrow;
 use std::ops::Deref;
 
-use super::mutf8str::Mutf8Str;
-use super::preamble::*;
+
+use crate::ngstr::preamble::*;
 
 
 #[derive(PartialEq, Eq, Clone, Default)]
-pub struct Mutf8String {
+pub struct Cesu8String {
     inner: Vec<u8>,
 }
 
-impl Mutf8String {
+impl Cesu8String {
     impl_string_encoding_meths!(base);
     impl_string_encoding_meths!(string);
 }
 
-impl Mutf8String {
-    pub(crate) unsafe fn _from_bytes_unchecked(b: Vec<u8>) -> Self {
-        Mutf8String { inner: b }
+impl Cesu8String {
+    pub(crate) const unsafe fn _from_bytes_unchecked(b: Vec<u8>) -> Self {
+        Cesu8String { inner: b }
     }
 
     pub(crate) const fn _into_bytes_unchecked(self) -> Vec<u8> {
@@ -32,13 +32,13 @@ impl Mutf8String {
     }
 }
 
-impl Borrow<Mutf8Str> for Mutf8String {
-    fn borrow(&self) -> &Mutf8Str {
+impl Borrow<Cesu8Str> for Cesu8String {
+    fn borrow(&self) -> &Cesu8Str {
         self
     }
 }
-impl Deref for Mutf8String {
-    type Target = Mutf8Str;
+impl Deref for Cesu8String {
+    type Target = Cesu8Str;
     fn deref(&self) -> &Self::Target {
         // SAFETY: this type should only contain valid mutf8
         unsafe { Self::Target::_from_bytes_unchecked(&self.inner) }
