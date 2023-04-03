@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::str::Utf8Error;
 
 use crate::encoding::utf8err_new;
 use crate::ngstr::prims::{enc_surrogates, dec_surrogates};
@@ -13,10 +12,6 @@ const THREE_BYTE_ED_UTF8: &'static str = "\u{d410}";
 const PURPLE_CIRCLE_UTF8: &'static str = "\u{1f7e3}";
 const PURPLE_CIRCLE_CHAR: char = '🟣';
 const PURPLE_CIRCLE_CESU8: &'static [u8] = b"\xED\xA0\xBD\xED\xBF\xA3";
-
-// const PURPLE_HEART_CHAR: char = '💜';
-// const PURPLE_HEART_UTF8: &'static str = "\u{1f49c}";
-// const PURPLE_HEART_CESU8: &'static [u8] = "";
 
 mod chars {
     use super::*;

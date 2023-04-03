@@ -108,6 +108,8 @@ mod unicode;
 /// 
 mod ngstr;
 
+/// A preamble including most relavent structs for the crate, including re-exports of some stdlib helpers
+/// such as `Cow`, `CStr`, `CString`, and `Deref`.
 pub mod preamble {
     pub use crate::ngstr::preamble::*;
 }

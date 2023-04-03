@@ -3,7 +3,6 @@
 use std::error::Error;
 use std::fmt;
 use std::num::NonZeroU8;
-use std::num::NonZeroUsize;
 use std::ops::AddAssign;
 use std::ops::Sub;
 use std::simd::*;
@@ -35,8 +34,6 @@ pub(crate) unsafe fn cesu8_to_utf8<const ENCODE_NUL: bool>(cesu: Cow<[u8]>) -> C
     //  ENCODE_NUL -> cesu8 has no nul, needs re-encoding
     // !ENCODE_NUL -> cesu8 may have nul, leave alone (encoded nul will error)
 
-    let src_str = cesu.clone(); // for debugging
-
     debug_assert!(!(ENCODE_NUL && cesu.contains(&b'\0')), "nul-byte included in mutf8 string");
 
     // try returning it as-is if there are no cesu8/mutf8 specific characters
@@ -67,10 +64,6 @@ pub(crate) unsafe fn cesu8_to_utf8<const ENCODE_NUL: bool>(cesu: Cow<[u8]>) -> C
     let mut ir = e.valid_up_to(); // read up to
 
     while ir < cesu.len() { // continue until we've exhausted our source bytes
-        eprintln!("cesu8_to_utf8<ENCODE_NUL={}>(src={:X?}) {{ (ir,iw)=({},{}), cesu={:X?}, rest={:X?} }}",
-            ENCODE_NUL, src_str,
-            ir, iw, cesu, &cesu[ir..]
-        );
         let rest = &mut cesu[ir..];
 
         // if we're here - found either 6-pair, or (if ENCODE_NUL) a 0xC0,0x80 sequence
@@ -228,15 +221,11 @@ pub(crate) fn utf8_to_cesu8_vec<const CHUNK_SIZE: usize, const ENCODE_NUL: bool>
         };
     };
 
-    eprintln!("utf8_to_cesu8_vec<ENCODE_NUL={}>({:?}) -- first_bad_idx = {}", ENCODE_NUL, src, first_bad_idx);
-
     let mut dst = Vec::with_capacity(crate::default_cesu8_capacity(src.len()));
     let (valid, rest) = src.split_at(first_bad_idx);
     dst.extend_from_slice(valid.as_bytes()); // initial push
     utf8_to_cesu8_io::<CHUNK_SIZE, ENCODE_NUL, _>(rest, true, &mut dst, &mut BufferUsage::default()).unwrap(); // Vec's io::Write cannot error
     
-    eprintln!("utf8_to_cesu8_vec<ENCODE_NUL={}>({:?}) = {:X?}", ENCODE_NUL, src, dst);
-
     Cow::Owned(dst)
 }
 
@@ -280,10 +269,8 @@ pub(crate) fn utf8_to_cesu8_io<const CHUNK_SIZE: usize, const ENCODE_NUL: bool, 
     src = src.split_at(buf_usage.read).1;
     
     loop {
-        eprintln!("starting utf8_to_cesu8_io<ENCODE_NUL={}> loop: (src={:?} / {:X?}, hint_bad_start={:?}, buf_usage={:?}, w={:X?})", ENCODE_NUL, src, src, hint_bad_start, buf_usage, w);
         let artificial_err = (src.len() > 0 && hint_bad_start).then_some(0);
         let err_ind_opt = artificial_err.or_else(|| check_utf8_to_cesu8::<CHUNK_SIZE, ENCODE_NUL>(src.as_bytes()));
-        eprintln!("\tartificial_err={:?}, err_ind_opt={:?}", artificial_err, err_ind_opt);
         match err_ind_opt {
             None if src.len() == 0 => {
                 // nothing read, nothing written
@@ -291,9 +278,7 @@ pub(crate) fn utf8_to_cesu8_io<const CHUNK_SIZE: usize, const ENCODE_NUL: bool, 
             }
             None => { // rest is good
                 loop {
-                    eprintln!("trying to write rest of bytes ({:?} // {:X?})", src, src.as_bytes());
                     let res_written = w.write(src.as_bytes());
-                    eprintln!("\t{:?}", res_written);
                     match res_written {
                         Ok(0) => { // not enough space
                             return Err(std::io::Error::new(
@@ -323,7 +308,6 @@ pub(crate) fn utf8_to_cesu8_io<const CHUNK_SIZE: usize, const ENCODE_NUL: bool, 
                 // write the valid portion, and mark it consumed
                 let (valid, rest) = src.split_at(err_ind);
                 if valid.len() > 0 {
-                    eprintln!("trying to write valid portion of bytes ({:?} / {:X?})", valid, valid.as_bytes());
                     w.write_all(valid.as_bytes())?;
                     buf_usage.inc(valid.as_bytes().len());
                 }
@@ -340,7 +324,6 @@ pub(crate) fn utf8_to_cesu8_io<const CHUNK_SIZE: usize, const ENCODE_NUL: bool, 
                 
                 if ENCODE_NUL && ch == '\0' {
                     // reencode nul as 2-byte pair
-                    eprintln!("attempting to write nul-term byte pair");
                     w.write_all(MUTF8_ZERO.as_slice())?;
                     *buf_usage += (1, 2);
                     src = chars.as_str(); // "consume" the character
@@ -348,7 +331,6 @@ pub(crate) fn utf8_to_cesu8_io<const CHUNK_SIZE: usize, const ENCODE_NUL: bool, 
                     // reencode 4-byte sequence as 2 3-byte sequences
                     let cesu_bytes = enc_surrogates(ch as u32);
                     let utf8_bytes = src.split_at(ch.len_utf8()).0;
-                    eprintln!("encoded utf8 char {:?} (utf8: {:?} / {:X?}) to cesu8 {:X?}", ch, utf8_bytes, utf8_bytes.as_bytes(), cesu_bytes);
                     w.write_all(&cesu_bytes)?;
                     *buf_usage += (4, 6);
                     src = chars.as_str(); // "consume" the character
@@ -405,6 +387,8 @@ pub fn utf8_to_cesu8_string<const CHUNK_SIZE: usize, const ENCODE_NUL: bool>(src
     Cow::Owned(dst)
 }
 
+/// An encoding error occured at the specified position. This information can be used to assert the portion up to
+/// `valid_up_to` is correct, or skip over invalid data.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct EncodingError {
     pub(crate) valid_up_to: usize,

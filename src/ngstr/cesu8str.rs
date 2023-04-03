@@ -1,7 +1,8 @@
 
 use crate::ngstr::preamble::*;
 
-/// A borrowed MUTF-8 string.
+/// A borrowed CESU-8 string. This type is not nul-terminated, may contain interior nuls, and encodes characters that
+/// are normally four bytes in UTF8, as two, three byte surrogate pairs.
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Cesu8Str {

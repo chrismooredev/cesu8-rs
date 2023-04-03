@@ -6,7 +6,7 @@
 // switch methods - effectively optimizing out the runtime checks for the specific variant
 
 use std::borrow::Cow;
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::c_char;
 use std::marker::PhantomData;
 use std::ops::{Deref, Add, AddAssign};
 
@@ -37,13 +37,9 @@ impl From<EncodingError> for NGCesu8CError {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub struct BufferTooSmallError(());
-pub enum FromUtf8IntoBufError {
-    BufferTooSmall,
-    NeedsReallocation
-}
-
+/// An error signifying that a buffer was too small, when trying to convert UTF8 to another string type.
+/// 
+/// This type contains information necessary to continue the conversion into an owned type without repeating checks.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct TryFromUtf8Error<'s, S: ?Sized> {
     source_str: &'s str,
@@ -304,9 +300,7 @@ macro_rules! impl_str_encoding_meths {
                     let cbuf: &mut [u8] = &mut *buf;
                     let mut c = std::io::Cursor::new(cbuf);
                     c.set_position(encode_state.written as u64);
-                    eprintln!("pre  cursor.position={:?}, encode_state.written={:?}", c.position(), encode_state.written);
                     let res = prims::utf8_to_cesu8_io::<{prims::DEFAULT_CHUNK}, {Self::ENCODE_NUL}, _>(s, true, &mut c, &mut encode_state);
-                    eprintln!("post cursor.position={:?}, encode_state.written={:?} (res = {:?}", c.position(), encode_state.written, res);
                     
                     match res {
                         Ok(_) => debug_assert_eq!(c.position() as usize, encode_state.written, "encoding state write position and cursor position not kept in sync by prims::utf8_to_cesu8_io"),
@@ -343,12 +337,6 @@ macro_rules! impl_str_encoding_meths {
                 // no more space left, have to allocate
                 true
             };
-
-            eprintln!("try_from_utf8_into_buf<ENCODE_NUL={}, NUL_TERM={}>(s={:?}, buf={:?}): encode_state={:?}, allocate={:?}",
-                Self::ENCODE_NUL, Self::NUL_TERM,
-                s, buf,
-                encode_state, allocate,
-            );
 
             if !allocate {
                 let used = &mut buf[..encode_state.written];
@@ -498,10 +486,17 @@ macro_rules! impl_str_encoding_meths {
             Self::_from_bytes_unchecked(bytes)
         }
 
+        /// Validates a byte slice into this string. This will never allocate. If an error occurs, position information
+        /// is returned through the [`EncodingError`]
         pub fn try_from_bytes(b: &[u8]) -> Result<&Self, crate::ngstr::prims::EncodingError> {
             prims::validate_cesu8::<{prims::DEFAULT_CHUNK}, {Self::ENCODE_NUL}>(b)
                 .map(|()| unsafe { Self::_from_bytes_unchecked(b) })
         }
+
+        /// Validates a byte slice into this string. This will never allocate. If an error occurs, position information
+        /// is returned through the Err variant.
+        /// 
+        /// Since UTF-8 can always be converted, if this errors then using another buffer/allocating is necessary.
         pub fn try_from_utf8(s: &str) -> Result<&Self, usize> {
             match prims::check_utf8_to_cesu8::<{prims::DEFAULT_CHUNK}, {Self::ENCODE_NUL}>(s.as_bytes()) {
                 None => Ok(unsafe { Self::from_bytes_unchecked(s.as_bytes()) }),
@@ -509,6 +504,8 @@ macro_rules! impl_str_encoding_meths {
             }
         }
 
+        /// Converts the UTF8 string into this type's string encoding. If possible, the original string is validated
+        /// and returned as-is, but if it needs to be reallocated, then it will return an owned variant.
         pub fn from_utf8(s: &str) -> Cow<Self> {
             match prims::utf8_to_cesu8_vec::<{prims::DEFAULT_CHUNK}, {Self::ENCODE_NUL}>(Cow::Borrowed(s)) {
                 Cow::Borrowed(b) => Cow::Borrowed(unsafe { Self::_from_bytes_unchecked(b) }),
@@ -963,7 +960,7 @@ macro_rules! impl_string_encoding_meths {
             unsafe { Self::_from_bytes_unchecked(v) }
         }
 
-            /// Attempts to converts a <code>[Vec]<[u8]></code> to a [`Mutf8CString`].
+        /// Attempts to converts a <code>[Vec]<[u8]></code> to a [`Mutf8CString`].
         ///
         /// Runtime checks are present to ensure there is only one nul byte in the
         /// [`Vec`], its last element, and also ensure mutf8 encoding.

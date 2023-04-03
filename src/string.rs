@@ -9,12 +9,8 @@ use crate::from_utf8_slice;
 use crate::from_utf8_vec;
 use crate::encoding;
 use crate::encoding::utf8err_inc;
-#[cfg(test)]
-use crate::encoding::utf8err_new;
 use crate::Cesu8Error;
 use crate::Variant;
-#[cfg(test)]
-use crate::ngstr::prims::{dec_surrogates, enc_surrogates};
 
 const UTF8_REPLACEMENT_CHAR: &[u8] = "\u{FFFD}".as_bytes();
 #[test]
