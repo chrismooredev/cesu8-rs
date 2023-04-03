@@ -264,7 +264,7 @@ macro_rules! impl_str_encoding_meths {
                     // SAFETY: the written portion was validated as cesu8
                     return Ok(unsafe { Self::_from_bytes_unchecked(s.as_bytes()) });
                 },
-                None if Self::NUL_TERM && (buf.len() >= s.len() + 1) => { // need nul term, buffer large enough
+                None if Self::NUL_TERM && (buf.len() > s.len()) => { // need nul term, buffer large enough
                     // copy into buf, add nul term, good to go
                     buf[..s.len()].copy_from_slice(s.as_bytes());
                     buf[s.len()] = b'\0';

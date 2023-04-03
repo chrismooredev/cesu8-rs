@@ -398,7 +398,7 @@ impl<'s> Cesu8Str<'s> {
         target: &mut W,
         variant: Variant,
     ) -> io::Result<()> {
-        let () = match encoding::utf8_as_cesu8(text.into(), variant) {
+        let () = match encoding::utf8_as_cesu8(text, variant) {
             Ok(_) => {
                 // may or may not allocate depending on caller
                 target.write_all(text.as_bytes())?

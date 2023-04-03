@@ -188,7 +188,7 @@ where
             }
 
             let mut arr = [b'#'; CHUNK_SIZE];
-            arr[..r].copy_from_slice(&rest);
+            arr[..r].copy_from_slice(rest);
             utf8_to_cesu8_check_lane::<CHUNK_SIZE, ENCODE_NUL>(arr).then_some((i, rest))
             // return Some(_) if the chunk is invalid, otherwise None
         })?;
@@ -269,10 +269,10 @@ pub(crate) fn utf8_to_cesu8_io<const CHUNK_SIZE: usize, const ENCODE_NUL: bool, 
     src = src.split_at(buf_usage.read).1;
     
     loop {
-        let artificial_err = (src.len() > 0 && hint_bad_start).then_some(0);
+        let artificial_err = (src.is_empty() && hint_bad_start).then_some(0);
         let err_ind_opt = artificial_err.or_else(|| check_utf8_to_cesu8::<CHUNK_SIZE, ENCODE_NUL>(src.as_bytes()));
         match err_ind_opt {
-            None if src.len() == 0 => {
+            None if src.is_empty() => {
                 // nothing read, nothing written
                 return Ok(*buf_usage - buf_usage_orig);
             }
@@ -307,7 +307,7 @@ pub(crate) fn utf8_to_cesu8_io<const CHUNK_SIZE: usize, const ENCODE_NUL: bool, 
             Some(err_ind) => { // found cesu8 (possible) error at err_ind
                 // write the valid portion, and mark it consumed
                 let (valid, rest) = src.split_at(err_ind);
-                if valid.len() > 0 {
+                if ! valid.is_empty() {
                     w.write_all(valid.as_bytes())?;
                     buf_usage.inc(valid.as_bytes().len());
                 }
@@ -330,7 +330,6 @@ pub(crate) fn utf8_to_cesu8_io<const CHUNK_SIZE: usize, const ENCODE_NUL: bool, 
                 } else if ch.len_utf8() == 4 {
                     // reencode 4-byte sequence as 2 3-byte sequences
                     let cesu_bytes = enc_surrogates(ch as u32);
-                    let utf8_bytes = src.split_at(ch.len_utf8()).0;
                     w.write_all(&cesu_bytes)?;
                     *buf_usage += (4, 6);
                     src = chars.as_str(); // "consume" the character
@@ -375,7 +374,7 @@ pub fn utf8_to_cesu8_string<const CHUNK_SIZE: usize, const ENCODE_NUL: bool>(src
             dst.extend_from_slice(&cesu_bytes);
         };
 
-        let use_next_utf8 = check_utf8_to_cesu8::<CHUNK_SIZE, true>(&src.as_bytes())
+        let use_next_utf8 = check_utf8_to_cesu8::<CHUNK_SIZE, true>(src.as_bytes())
             .unwrap_or(src.len());
 
         let (consumed, rest) = src.split_at(use_next_utf8);
