@@ -11,12 +11,11 @@ env:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@nightly
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --verbose --features=build-binary
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --verbose --features=build-binary
