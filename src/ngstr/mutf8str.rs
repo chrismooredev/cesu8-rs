@@ -1,6 +1,4 @@
 
-use std::hash::Hash;
-
 use super::preamble::*;
 
 /// A borrowed MUTF-8 string.
@@ -17,7 +15,7 @@ impl Mutf8Str {
 
 impl Mutf8Str {
     pub const ENCODE_NUL: bool = true;
-    pub const NUL_TERM: bool = true;
+    pub const NUL_TERM: bool = false;
 
     /// Uses pointer magic to transmute a byte slice to an instance of Mutf8Str
     /// 
@@ -46,12 +44,6 @@ impl ToOwned for Mutf8Str {
     fn to_owned(&self) -> Self::Owned {
         // SAFETY: string has already been validated as mutf8
         unsafe { Self::Owned::from_bytes_unchecked(self.inner.to_vec()) }
-    }
-}
-impl Hash for Mutf8Str {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write(self.as_bytes());
-        state.write_u8(0xff);
     }
 }
 impl Default for &Mutf8Str {

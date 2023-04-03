@@ -7,9 +7,19 @@
 
 use std::borrow::Cow;
 use std::ffi::{c_char, CStr, CString};
-use std::ops::Deref;
+use std::marker::PhantomData;
+use std::ops::{Deref, Add, AddAssign};
 
-use self::prims::EncodingError;
+use self::prims::{EncodingError, BufferUsage};
+
+pub(crate) mod prims;
+pub(crate) mod cesu8str;
+pub(crate) mod cesu8string;
+pub(crate) mod mutf8str;
+pub(crate) mod mutf8string;
+pub(crate) mod mutf8cstr;
+pub(crate) mod mutf8cstring;
+pub(crate) mod cross_impls;
 
 /// An error type for creating a Cesu8/Mutf8 CStr/CString
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -27,7 +37,75 @@ impl From<EncodingError> for NGCesu8CError {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct BufferTooSmallError(());
+pub enum FromUtf8IntoBufError {
+    BufferTooSmall,
+    NeedsReallocation
+}
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub struct TryFromUtf8Error<'s, S: ?Sized> {
+    source_str: &'s str,
+    user_buffer: &'s [u8],
+    encode_state: BufferUsage,
+    _phantom: PhantomData<S>,
+}
+
+impl<'s, S: ?Sized> TryFromUtf8Error<'s, S> {
+    /// The number of bytes consumed from the source string
+    pub fn bytes_read(&self) -> usize {
+        self.encode_state.read
+    }
+    /// The number of bytes written to the destination buffer
+    pub fn bytes_written(&self) -> usize {
+        self.encode_state.written
+    }
+    /// The original source string to convert
+    pub fn source_str(&self) -> &str {
+        self.source_str
+    }
+    /// The portion of the source string that was converted
+    pub fn source_str_used(&self) -> &str {
+        &self.source_str[..self.encode_state.read]
+    }
+    /// The portion of the source string that is left to convert
+    pub fn source_str_rest(&self) -> &str {
+        &self.source_str[self.encode_state.read..]
+    }
+    /// The portion of the user buffer that has been encoded. Note that it will not contain a nul-byte, if required
+    /// for the string encoding. It should however, be valid other than that (particularly, partial codepoints should
+    /// not exist)
+    pub fn encoded_bytes(&self) -> &[u8] {
+        &self.user_buffer[..self.encode_state.written]
+    }
+}
+
+macro_rules! impl_try_from_utf8_error_finish {
+    ($t: ty) => {
+        impl<'s> TryFromUtf8Error<'s, $t> {
+            pub fn finish(mut self) -> <$t as ToOwned>::Owned {
+                let mut v = Vec::with_capacity(crate::default_cesu8_capacity(self.source_str.len()) + 1);
+                v.extend_from_slice(&self.user_buffer[..self.encode_state.written]); // no nul terminator
+                
+                // vec writer can't fail
+                prims::utf8_to_cesu8_io::<{prims::DEFAULT_CHUNK}, {<$t>::ENCODE_NUL}, _>(
+                    self.source_str, false, &mut v, &mut self.encode_state
+                ).unwrap();
+        
+                if <$t>::NUL_TERM {
+                    v.push(b'\0');
+                }
+        
+                unsafe { <$t as ToOwned>::Owned::_from_bytes_unchecked(v) }
+            }
+        }
+    }
+}
+
+impl_try_from_utf8_error_finish!(cesu8str::Cesu8Str);
+impl_try_from_utf8_error_finish!(mutf8str::Mutf8Str);
+impl_try_from_utf8_error_finish!(mutf8cstr::Mutf8CStr);
 
 macro_rules! impl_from_with_nul {
     ($e: ident, $srcitem: literal) => {
@@ -55,14 +133,7 @@ impl_from_with_nul!(FromBytesWithNulError, "[`Vec<u8>`]");
 impl_from_with_nul!(FromUtf8WithNulError, "[`String`]");
 
 
-pub(crate) mod prims;
-pub(crate) mod cesu8str;
-pub(crate) mod cesu8string;
-pub(crate) mod mutf8str;
-pub(crate) mod mutf8string;
-pub(crate) mod mutf8cstr;
-pub(crate) mod mutf8cstring;
-pub(crate) mod cross_impls;
+
 
 pub mod preamble {
     pub(crate) use super::*;
@@ -111,7 +182,7 @@ pub mod preamble {
 
 //     // fn insert(&mut self, idx: usize, ch: char);
 //     // fn insert_str(&mut self, idx: usize, string: &Self::Target);
-//     // fn insert_utf8_str(&mut self, idx: usize, string: &str); 
+
 //     fn into_bytes(self) -> Vec<u8>;
 //     fn new() -> Self;
 //     // fn pop(&mut self) -> Option<char>;
@@ -179,11 +250,166 @@ macro_rules! impl_str_encoding_meths {
             // SAFETY: any types implementing this trait should be valid cesu8
             unsafe { prims::cesu8_to_utf8::<{Self::ENCODE_NUL}>(Cow::Borrowed(self.as_bytes())) }
         }
-        pub fn from_utf8(s: &str) -> Cow<Self> {
-            match prims::utf8_to_cesu8_vec::<{prims::DEFAULT_CHUNK}, {Self::ENCODE_NUL}>(Cow::Borrowed(s)) {
-                Cow::Borrowed(b) => Cow::Borrowed(unsafe { Self::_from_bytes_unchecked(b) }),
-                Cow::Owned(b) => Cow::Owned(unsafe { <Self as ToOwned>::Owned::_from_bytes_unchecked(b) }),
+
+        /// Attempts to convert a UTF-8 string into this string types' native encoding. The returned string
+        /// can be borrowed from the source UTF-8 string, or from the provided buffer.
+        /// 
+        /// If the source string is usable as-is, it is cast and returned. If the source string can be converted into
+        /// a byte string that fits within the buffer, it is reencoded and returned. Otherwise, if some form of allocation
+        /// or a larger buffer is necessary, then an error is returned.
+        /// 
+        /// The returned error can be used to complete the conversion to an owned string, without re-parsing the beginning.
+        pub fn try_from_utf8_into_buf<'s>(s: &'s str, buf: &'s mut [u8]) -> Result<&'s Self, TryFromUtf8Error<'s, Self>> {
+            
+            // try to use the source string as literally as possible
+            let valid_up_to = match prims::check_utf8_to_cesu8::<{prims::DEFAULT_CHUNK}, {Self::ENCODE_NUL}>(s.as_bytes()) {
+                None if ! Self::NUL_TERM => { // can use source string
+                    // can return as is
+                    // SAFETY: the written portion was validated as cesu8
+                    return Ok(unsafe { Self::_from_bytes_unchecked(s.as_bytes()) });
+                },
+                None if Self::NUL_TERM && (buf.len() >= s.len() + 1) => { // need nul term, buffer large enough
+                    // copy into buf, add nul term, good to go
+                    buf[..s.len()].copy_from_slice(s.as_bytes());
+                    buf[s.len()] = b'\0';
+
+                    // SAFETY: copied validated bytes, and appended necessary nul terminator
+                    return Ok(unsafe { Self::_from_bytes_unchecked(buf) });
+                },
+                None => { // valid string, buffer too small for nul term
+                    s.len()
+                }
+                Some(err_ind) => { // string needs re-encoding, maybe nul-term, maybe enough space or not
+                    err_ind
+                },
+            };
+            
+            let mut encode_state = BufferUsage::default();
+
+            // do not copy MIN(valid_up_to, buf.len()) because we don't want to copy partial codepoints to the buffer
+            if valid_up_to <= buf.len() {
+                // copy what we can literally
+                buf[..valid_up_to].copy_from_slice(&s.as_bytes()[..valid_up_to]);
+                encode_state.inc(valid_up_to);
             }
+
+            // try to convert rest, if we have space
+            debug_assert!((encode_state.read < s.len()) || Self::NUL_TERM);
+            let allocate = if encode_state.written < buf.len() {
+                
+                // convert what we can from the source string to UTF8
+                let res = {
+                    // create local binding for Cursor to consume
+                    // Cursor<&mut &mut [u8]> doesn't seem to impl std::io::Write
+                    let cbuf: &mut [u8] = &mut *buf;
+                    let mut c = std::io::Cursor::new(cbuf);
+                    c.set_position(encode_state.written as u64);
+                    eprintln!("pre  cursor.position={:?}, encode_state.written={:?}", c.position(), encode_state.written);
+                    let res = prims::utf8_to_cesu8_io::<{prims::DEFAULT_CHUNK}, {Self::ENCODE_NUL}, _>(s, true, &mut c, &mut encode_state);
+                    eprintln!("post cursor.position={:?}, encode_state.written={:?} (res = {:?}", c.position(), encode_state.written, res);
+                    
+                    match res {
+                        Ok(_) => debug_assert_eq!(c.position() as usize, encode_state.written, "encoding state write position and cursor position not kept in sync by prims::utf8_to_cesu8_io"),
+
+                        // on error, write_all will return the amount of bytes it /could/ write
+                        Err(_) => debug_assert!(c.position() as usize - encode_state.written < 6, "encoding state write position and cursor position not kept in sync by prims::utf8_to_cesu8_io"),
+                    }
+                    
+                    // drop the cursor, 'unwrapping' it to the original user buf
+                    res
+                };
+
+                match (Self::NUL_TERM, res) {
+                    // successful conversion, nul-term needed and we have space for it
+                    (true, Ok(_)) if (encode_state.written < buf.len()) => {
+                        buf[encode_state.written] = b'\0';
+                        encode_state.written += 1;
+                        false
+                    },
+                    (true, Ok(_)) => {
+                        // no space for nul term, have to allocate
+                        true
+                    }
+                    (false, Ok(_)) => {
+                        // fully converted, no nul terminator necessary
+                        false
+                    },
+                    (_, Err(_)) => {
+                        // no space left in buffer, have to allocate
+                        true
+                    }
+                }
+            } else {
+                // no more space left, have to allocate
+                true
+            };
+
+            eprintln!("try_from_utf8_into_buf<ENCODE_NUL={}, NUL_TERM={}>(s={:?}, buf={:?}): encode_state={:?}, allocate={:?}",
+                Self::ENCODE_NUL, Self::NUL_TERM,
+                s, buf,
+                encode_state, allocate,
+            );
+
+            if !allocate {
+                let used = &mut buf[..encode_state.written];
+
+                // SAFETY: the written portion was re-encoded as valid cesu8
+                // and a nul-terminator was added if necessary
+                Ok(unsafe { Self::_from_bytes_unchecked(used) })
+            } else {
+                Err(TryFromUtf8Error {
+                    source_str: s,
+                    user_buffer: buf,
+                    encode_state,
+                    _phantom: PhantomData,
+                })
+            }
+        }
+
+        /// Converts a UTF8 string into this string's native encoding. If possible, the string slice will be returned as
+        /// is. If not, the provided buffer is used. If the string is too big for the buffer, it will be allocated.
+        #[inline]
+        pub fn from_utf8_into_buf<'s>(s: &'s str, buf: &'s mut [u8]) -> Cow<'s, Self> {
+            match Self::try_from_utf8_into_buf(s, buf) {
+                Ok(enc) => Cow::Borrowed(enc),
+                Err(err) => Cow::Owned(err.finish())
+            }
+            // let mut c = std::io::Cursor::new(buf);
+            // let mut encode_state = BufferUsage::default();
+            // let res = prims::utf8_to_cesu8_io::<{prims::DEFAULT_CHUNK}, {Self::ENCODE_NUL}, _>(s, false, &mut c, &mut encode_state);
+            // let mut allocate = res.is_err();
+            // let usrbuf = c.into_inner();
+
+            // if Self::NUL_TERM {
+            //     if encode_state.written < usrbuf.len() {
+            //         // space for a nul-byte
+            //         usrbuf[encode_state.written] = b'\0';
+            //         encode_state.written += 1;
+            //     } else {
+            //         // no space for nul-byte
+            //         allocate = true;
+            //     }
+            // }
+
+            // let used = &mut usrbuf[..encode_state.written];
+            // if !allocate {
+            //     // SAFETY: the written portion was re-encoded as valid cesu8
+            //     // and a nul-terminator was added if necessary
+            //     Cow::Borrowed(unsafe { Self::_from_bytes_unchecked(used) })
+            // } else {
+            //     let mut v = Vec::with_capacity(crate::default_cesu8_capacity(s.len()) + 1);
+            //     v.extend_from_slice(used); // no nul terminator
+            //     let rest = &s[encode_state.read..];
+                
+            //     // vec writer can't fail
+            //     prims::utf8_to_cesu8_io::<{prims::DEFAULT_CHUNK}, {Self::ENCODE_NUL}, _>(s, false, &mut v, &mut encode_state).unwrap();
+
+            //     if Self::NUL_TERM {
+            //         v.push(b'\0');
+            //     }
+
+            //     Cow::Owned(unsafe { <Self as ToOwned>::Owned::_from_bytes_unchecked(v) })
+            // }
         }
 
         /// The length of this string in bytes. If this string includes a nul-terminator, that is not included.
@@ -216,6 +442,45 @@ macro_rules! impl_str_encoding_meths {
         pub fn is_empty(&self) -> bool {
             self.as_bytes().is_empty()
         }
+
+        /// Checks that `index`-th byte is the first byte in a UTF-8 code point
+        /// sequence or the end of the string.
+        ///
+        /// The start and end of the string (when `index == self.len()`) are
+        /// considered to be boundaries.
+        ///
+        /// Returns `false` if `index` is greater than `self.len()`.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// let s = "Löwe 老虎 Léopard";
+        /// assert!(s.is_char_boundary(0));
+        /// // start of `老`
+        /// assert!(s.is_char_boundary(6));
+        /// assert!(s.is_char_boundary(s.len()));
+        ///
+        /// // second byte of `ö`
+        /// assert!(!s.is_char_boundary(2));
+        ///
+        /// // third byte of `老`
+        /// assert!(!s.is_char_boundary(8));
+        /// ```
+        pub fn is_char_boundary(&self, index: usize) -> bool {
+            if index == 0 { return true; }
+            match self.as_bytes().get(index) {
+                None => index == self.len(),
+                Some(0xED) => {
+                    // this function is used to test where things can be inserted into
+                    // don't allow inserting in the middle of a surrogate pair
+                    // also must account for multiple pairs in a row
+                    todo!("is_char_boundary on surrogate pair, test if second codepoint or not");
+                    // start with `0` or `11`
+                },
+                // https://github.com/rust-lang/rust/blob/938afba8996fe058b91c61b23ef5d000cb9ac169/library/core/src/num/mod.rs#L1016
+                Some(&b) => (b as i8) >= -0x40,
+            }
+        }
     };
     (str) => {
         /// Transmutes the byte slice into this string's encoding.
@@ -242,6 +507,21 @@ macro_rules! impl_str_encoding_meths {
                 None => Ok(unsafe { Self::from_bytes_unchecked(s.as_bytes()) }),
                 Some(idx) => Err(idx)
             }
+        }
+
+        pub fn from_utf8(s: &str) -> Cow<Self> {
+            match prims::utf8_to_cesu8_vec::<{prims::DEFAULT_CHUNK}, {Self::ENCODE_NUL}>(Cow::Borrowed(s)) {
+                Cow::Borrowed(b) => Cow::Borrowed(unsafe { Self::_from_bytes_unchecked(b) }),
+                Cow::Owned(b) => Cow::Owned(unsafe { <Self as ToOwned>::Owned::_from_bytes_unchecked(b) }),
+            }
+        }
+
+        /// Encodes a UTF8 string into this string's native encoding, directly into the provided writer. The encoding
+        /// process is infallible so any errors will be from the underlying `std::io::Write`'r.
+        #[inline]
+        pub fn encode_utf8_into_writer<W: std::io::Write + fmt::Debug>(s: &str, w: W) -> std::io::Result<usize> {
+            // not available for cstr's to make null-terminator exclusion explicit
+            prims::utf8_to_cesu8_io::<{prims::DEFAULT_CHUNK}, {Self::ENCODE_NUL}, W>(s, false, w, &mut BufferUsage::default()).map(|bu| bu.written)
         }
     };
     (cstr) => {
@@ -611,9 +891,8 @@ macro_rules! impl_string_encoding_meths {
         pub fn into_bytes(self) -> Vec<u8> {
             let mut inner = self._into_bytes_unchecked();
             if <Self as Deref>::Target::NUL_TERM {
-                let Some(b'\0') = inner.pop() else {
-                    panic!("string not nul terminated");
-                };
+                check_term!(inner.as_slice());
+                inner.pop().unwrap();
             }
             inner
         }
@@ -623,6 +902,33 @@ macro_rules! impl_string_encoding_meths {
             let mut v = Vec::with_capacity(capacity);
             if <Self as Deref>::Target::NUL_TERM { v.push(b'\0'); }
             unsafe { Self::_from_bytes_unchecked(v) }
+        }
+
+        pub fn insert_str(&mut self, idx: usize, string: &str) {
+            assert!(self.is_char_boundary(idx), "provided index is not a valid character boundary");
+
+            let nt = <Self as Deref>::Target::NUL_TERM;
+            if idx == self.as_bytes().len() {
+                // if we're writing to the end, we can just Write directly into our own buffer
+                // after accounting for possible nul-terminator
+
+                if nt {
+                    check_term!(self.inner.as_slice());
+                    self.inner.pop().unwrap();
+                }
+                // writing to vec, cannot fail
+                prims::utf8_to_cesu8_io::<{prims::DEFAULT_CHUNK}, {<Self as Deref>::Target::ENCODE_NUL}, _>(string, false, &mut self.inner, &mut BufferUsage::default()).unwrap();
+                if nt {
+                    self.inner.push(b'\0');
+                }
+            } else {
+                let encoded = prims::utf8_to_cesu8_vec::<{prims::DEFAULT_CHUNK}, {<Self as Deref>::Target::ENCODE_NUL}>(Cow::Borrowed(string));
+                self.inner.splice(idx..idx, encoded.iter().copied());
+            }
+        }
+        pub fn insert_at(&mut self, idx: usize, string: &<Self as Deref>::Target) {
+            assert!(self.is_char_boundary(idx), "provided index is not a valid character boundary");
+            self.inner.splice(idx..idx, string.as_bytes().iter().copied());
         }
 
         // fn into_inner(self) -> Vec<u8>;
@@ -842,4 +1148,157 @@ macro_rules! impl_string_encoding_meths {
     };
 }
 
-pub(crate) use {impl_str_encoding_meths, impl_string_encoding_meths};
+macro_rules! impl_simple_str_traits {
+    (base $S:ty) => {
+        impl fmt::Debug for $S {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                <str as fmt::Debug>::fmt(&self.to_str(), f)
+            }
+        }
+        impl fmt::Display for $S {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                <str as fmt::Display>::fmt(&self.to_str(), f)
+            }
+        }
+        impl Hash for $S {
+            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+                self.to_str().hash(state);
+            }
+        }
+    };
+    (str $S:ty) => {
+        impl<'a> Add<&'_ str> for &$S {
+            type Output = <$S as ToOwned>::Owned;
+            fn add(self, rhs: &str) -> Self::Output {
+                self.to_owned() + rhs
+            }
+        }
+        impl<'a> Add<&'_ $S> for &$S {
+            type Output = <$S as ToOwned>::Owned;
+            fn add(self, rhs: &$S) -> Self::Output {
+                self.to_owned() + rhs
+            }
+        }
+        impl<'a> Add<&'_ $S> for String {
+            type Output = String;
+            fn add(mut self, rhs: &$S) -> Self {
+                self.push_str(&rhs.to_str());
+                self
+            }
+        }
+        impl<'a> Add<&'_ $S> for Cow<'a, $S> {
+            type Output = Self;
+            fn add(self, rhs: &$S) -> Self {
+                if rhs.is_empty() { return self; }
+                Cow::Owned(self.into_owned() + rhs)
+            }
+        }
+    };
+    (string $S:ty) => {
+        impl From<String> for $S {
+            fn from(s: String) -> $S {
+                <$S>::from_utf8(s)
+            }
+        }
+        impl From<&'_ str> for $S {
+            fn from(s: &str) -> $S {
+                <$S>::from_utf8(s.to_string())
+            }
+        }
+        impl From<$S> for String {
+            fn from(s: $S) -> Self {
+                s.into_string()
+            }
+        }
+        impl Add<&'_ str> for $S {
+            type Output = $S;
+            fn add(mut self, rhs: &str) -> Self::Output {
+                self += rhs;
+                self
+            }
+        }
+        impl Add<&'_ <$S as Deref>::Target> for $S {
+            type Output = $S;
+            fn add(mut self, rhs: &<$S as Deref>::Target) -> Self::Output {
+                self += rhs;
+                self
+            }
+        }
+        impl AddAssign<&'_ str> for $S {
+            fn add_assign(&mut self, rhs: &str) {
+                self.insert_str(self.len(), rhs)
+            }
+        }
+        impl AddAssign<&'_ <$S as Deref>::Target> for $S {
+            fn add_assign(&mut self, rhs: &'_ <$S as Deref>::Target) {
+                self.insert_at(self.len(), rhs)
+            }
+        }
+
+        impl fmt::Write for $S {
+            #[inline]
+            fn write_str(&mut self, s: &str) -> fmt::Result {
+                *self += s;
+                Ok(())
+            }
+        }
+    }
+}
+
+use std::fmt;
+use std::hash::Hash;
+impl_simple_str_traits!(base cesu8str::Cesu8Str);
+impl_simple_str_traits!(base mutf8str::Mutf8Str);
+impl_simple_str_traits!(base mutf8cstr::Mutf8CStr);
+impl_simple_str_traits!(str cesu8str::Cesu8Str);
+impl_simple_str_traits!(str mutf8str::Mutf8Str);
+impl_simple_str_traits!(str mutf8cstr::Mutf8CStr);
+
+impl_simple_str_traits!(base cesu8string::Cesu8String);
+impl_simple_str_traits!(base mutf8string::Mutf8String);
+impl_simple_str_traits!(base mutf8cstring::Mutf8CString);
+impl_simple_str_traits!(string cesu8string::Cesu8String);
+impl_simple_str_traits!(string mutf8string::Mutf8String);
+impl_simple_str_traits!(string mutf8cstring::Mutf8CString);
+
+#[test]
+fn strings_impl_expected_traits() {
+    use crate::preamble::*;
+    
+    // check for some common trait impls that should assist in general usability
+
+    /// most operator-based in [`crate::ngstr::cross_impls`]
+    trait ExpectedTraitsBorrowed<'s, SB:
+        ?Sized
+        + fmt::Debug + fmt::Display + std::hash::Hash + ToOwned
+        // + PartialEq<str> + PartialEq<SB>
+        // + PartialOrd<str> + PartialOrd<SB>
+        
+        
+    > where
+        for<'b> &'b SB: Add<&'b str, Output = <SB as ToOwned>::Owned>,
+    {}
+    trait ExpectedTraitsOwned<SO:
+        Sized
+        + fmt::Debug + fmt::Display + std::hash::Hash + Deref + Clone
+        // + PartialEq<str> + PartialEq<SO>
+        // + PartialOrd<str> + PartialOrd<SO>
+        
+        + From<String> + Into<String>
+    > where
+        for<'s> SO: Add<&'s str, Output = SO>,
+        for<'s> SO: Add<&'s <SO as Deref>::Target, Output = SO>,
+        for<'s> SO: AddAssign<&'s str> + AddAssign<&'s <SO as Deref>::Target>,
+        for<'s> SO: From<&'s str> + From<String>,
+    {}
+
+    // will not compile if test 'fails'
+    impl ExpectedTraitsBorrowed<'_, Cesu8Str> for () {}
+    impl ExpectedTraitsBorrowed<'_, Mutf8Str> for () {}
+    impl ExpectedTraitsBorrowed<'_, Mutf8CStr> for () {}
+    impl ExpectedTraitsOwned<Cesu8String> for () {}
+    impl ExpectedTraitsOwned<Mutf8String> for () {}
+    impl ExpectedTraitsOwned<Mutf8CString> for () {}
+}
+
+pub(crate) use {impl_str_encoding_meths, impl_string_encoding_meths, impl_simple_str_traits};

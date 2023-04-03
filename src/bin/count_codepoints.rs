@@ -30,7 +30,7 @@ impl Counters {
 					b if b & 0b1110_0000 == 0b1100_0000 => counts.len2 += 1,
 					b if b & 0b1111_0000 == 0b1110_0000 => counts.len3 += 1,
 					b if b & 0b1111_1000 == 0b1111_0000 => counts.len4 += 1,
-					b => unreachable!("found non-continuation byte that is not nul/ascii/len(2,3,4)-utf8 char: {:x?}", b),
+					b => unreachable!("found non-continuation byte that is not nul/ascii/len(2,3,4)-utf8 char: {:X?}", b),
 				}
             }
         }
@@ -201,7 +201,7 @@ fn assumed_utf8_chunk(total_i: usize, chunk: &[u8]) -> usize {
 			b if b & 0b1111_0000 == 0b1110_0000 => 3, // len3
 			b if b & 0b1111_1000 == 0b1111_0000 => 4, // len4
 			b if b & 0b1100_0000 == 0b1000_0000 => { continue; }, // continuation
-			b => unreachable!("found non-continuation byte that is not nul/ascii/len(2,3,4)-utf8 char: {:x?} (at {:x})", b, total_i + i),
+			b => unreachable!("found non-continuation byte that is not nul/ascii/len(2,3,4)-utf8 char: {:X?} (at {:x})", b, total_i + i),
 		};
 
         // if there is enough space for the char, return after it - otherwise, return beginning of it
@@ -243,7 +243,7 @@ fn readloop(input: &mut dyn Read, chunk: usize) -> io::Result<Result<Counters, U
                 let valid = &buf[..valid_up_to];
 
                 // if valid_up_to != buffered+n {
-                // 	eprintln!("note: splitting chunk input[0x{:X}..0x{:X}] as input[0x{:X}..0x{:X}] (last bytes: {:x?})", total_i, total_i+n, total_i, total_i+valid_up_to-buffered, &buf[(buffered+n).saturating_sub(5)..buffered+n]);
+                // 	eprintln!("note: splitting chunk input[0x{:X}..0x{:X}] as input[0x{:X}..0x{:X}] (last bytes: {:X?})", total_i, total_i+n, total_i, total_i+valid_up_to-buffered, &buf[(buffered+n).saturating_sub(5)..buffered+n]);
                 // }
 
                 // count up bytes

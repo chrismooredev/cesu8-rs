@@ -7,7 +7,7 @@ use crate::ngstr::preamble::*;
 
 #[derive(PartialEq, Eq, Clone, Default)]
 pub struct Cesu8String {
-    inner: Vec<u8>,
+    pub(crate) inner: Vec<u8>,
 }
 
 impl Cesu8String {

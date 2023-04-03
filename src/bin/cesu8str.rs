@@ -271,7 +271,7 @@ fn read_write_loop(
                     );
                     debugln!("-> (start..end) = {:?}", start..end);
                     let portion = &buf[n.saturating_sub(4)..(n + el + 4).min(end)];
-                    debugln!("-> erroring portion (4 byte context): {:x?}", portion);
+                    debugln!("-> erroring portion (4 byte context): {:X?}", portion);
 
                     start = n;
                     absolute_start += n;

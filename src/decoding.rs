@@ -224,7 +224,7 @@ pub(crate) fn cesu8_to_utf8_const<const ENCODE_NUL: bool>(cesu: &Cesu8Str<'_>) -
                 } else if let Some(&[first, second, third, fourth, fifth, sixth]) = rest.get(..6) {
                     debug_assert!(
                         first == 0xED && fourth == 0xED,
-                        "expected surrogate pair, recieved something else (err bytes[..6]: {:x?})",
+                        "expected surrogate pair, recieved something else (err bytes[..6]: {:X?})",
                         &rest[..6]
                     );
 
@@ -242,7 +242,7 @@ pub(crate) fn cesu8_to_utf8_const<const ENCODE_NUL: bool>(cesu: &Cesu8Str<'_>) -
                     ));
                     i += 6;
                 } else {
-                    unreachable!("unknown CESU8 decoding error. Was a Cesu8Str made with invalid CESU-8 bytes? (next (i={})..6 bytes: {:x?}) (cesu8 str: {:x?})", i, &rest[..6.min(rest.len())], bytes);
+                    unreachable!("unknown CESU8 decoding error. Was a Cesu8Str made with invalid CESU-8 bytes? (next (i={})..6 bytes: {:X?}) (cesu8 str: {:X?})", i, &rest[..6.min(rest.len())], bytes);
                 }
             }
         }
@@ -397,7 +397,7 @@ pub(crate) fn cesu8_validate<const ENCODE_NUL: bool>(
                     }
                     _ => {
                         // not valid UTF-8 or CESU-8
-                        // eprintln!("[{}:{}] returning err of next codepoint (i..len={:?}, bytes[i..len] = {:x?})", file!(), line!(), i..bytes.len(), &bytes[i..bytes.len()]);
+                        // eprintln!("[{}:{}] returning err of next codepoint (i..len={:?}, bytes[i..len] = {:X?})", file!(), line!(), i..bytes.len(), &bytes[i..bytes.len()]);
                         debug_assert!(
                             std::str::from_utf8(&bytes[i..]).is_err(),
                             "could be solved with more data, but thats not is reported"

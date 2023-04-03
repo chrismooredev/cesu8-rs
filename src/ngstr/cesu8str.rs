@@ -1,6 +1,4 @@
 
-use std::hash::Hash;
-
 use crate::ngstr::preamble::*;
 
 /// A borrowed MUTF-8 string.
@@ -46,12 +44,6 @@ impl ToOwned for Cesu8Str {
     fn to_owned(&self) -> Self::Owned {
         // SAFETY: string has already been validated as mutf8
         unsafe { Self::Owned::from_bytes_unchecked(self.inner.to_vec()) }
-    }
-}
-impl Hash for Cesu8Str {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write(self.as_bytes());
-        state.write_u8(0xff);
     }
 }
 impl Default for &Cesu8Str {

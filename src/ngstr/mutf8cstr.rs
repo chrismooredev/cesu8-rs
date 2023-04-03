@@ -1,8 +1,6 @@
 
 use std::ops::Deref;
-use std::fmt;
 use std::ffi::c_char;
-use std::hash::Hash;
 use std::ffi::CStr;
 
 use super::preamble::*;
@@ -133,26 +131,11 @@ impl Mutf8CStr {
     }
 }
 
-impl fmt::Debug for Mutf8CStr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", &self.to_str())
-    }
-}
 impl Default for &Mutf8CStr {
     fn default() -> Self {
         const SLICE: &[c_char] = &[0];
         // SAFETY: `SLICE` is indeed pointing to a valid nul-terminated string.
         unsafe { Mutf8CStr::from_ptr(SLICE.as_ptr()) }
-    }
-}
-impl fmt::Display for Mutf8CStr {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.to_str())
-    }
-}
-impl Hash for Mutf8CStr {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.to_str().hash(state);
     }
 }
 impl Deref for Mutf8CStr {

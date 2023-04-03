@@ -3,47 +3,70 @@ use std::str::Utf8Error;
 
 use crate::encoding::utf8err_new;
 use crate::ngstr::prims::{enc_surrogates, dec_surrogates};
-use crate::{Variant, Cesu8Str};
+use crate::preamble::*;
 
-mod string {
+// not a proper character? but it validates through std::char::from_u32(0xd7ff) and it kinda stands out visually
+// notably: it starts with ED: \xED\x90\x90
+const THREE_BYTE_ED_CHAR: char = '\u{d410}';
+const THREE_BYTE_ED_UTF8: &'static str = "\u{d410}";
+
+const PURPLE_CIRCLE_UTF8: &'static str = "\u{1f7e3}";
+const PURPLE_CIRCLE_CHAR: char = '🟣';
+const PURPLE_CIRCLE_CESU8: &'static [u8] = b"\xED\xA0\xBD\xED\xBF\xA3";
+
+// const PURPLE_HEART_CHAR: char = '💜';
+// const PURPLE_HEART_UTF8: &'static str = "\u{1f49c}";
+// const PURPLE_HEART_CESU8: &'static [u8] = "";
+
+mod chars {
     use super::*;
 
-    fn test_encoded(variant: Variant, text: &str, expected: &[u8]) {
-        // eprintln!("testing {:?} for variant {:?} as cesu8 from utf8", text, variant);
+    #[test]
+    fn utf8_references() {
+        assert_eq!(THREE_BYTE_ED_UTF8.chars().next().unwrap(), THREE_BYTE_ED_CHAR);
 
-
-        let cesu8 = Cesu8Str::from_utf8(text, variant);
-        assert_eq!(
-            expected,
-            cesu8.as_bytes(),
-            "[{:?} variant][{:?}] unable to properly encode to CESU-8",
-            variant,
-            text
-        );
-
-        // eprintln!("\tgetting utf8 error for expected");
-        let utf8_err = std::str::from_utf8(expected).map(|_| ());
-        assert_eq!(
-            utf8_err,
-            cesu8.utf8_error,
-            "[{:?} variant][{:?}] utf8_err invariant was not maintained (CESU-8 bytes: {:x?})",
-            variant,
-            text,
-            cesu8.as_bytes()
-        );
-
-        // eprintln!("\treencoding {:?} from cesu8 ({:?}) to utf8", text, expected);
-        let utf8 = cesu8.to_str();
-        assert_eq!(
-            text, utf8,
-            "[{:?} variant][{:?}] unexpected decoding from CESU-8 to UTF-8",
-            variant, text
-        )
+        assert_eq!(PURPLE_CIRCLE_UTF8.chars().next().unwrap(), PURPLE_CIRCLE_CHAR);
+        let bytes = enc_surrogates(PURPLE_CIRCLE_CHAR as u32);
+        assert_eq!(bytes, PURPLE_CIRCLE_CESU8);
     }
-    fn test_encoded_same(text: &str, expected: &[u8]) {
-        test_encoded(Variant::Standard, text, expected);
-        test_encoded(Variant::Java, text, expected);
+}
+
+mod string {
+    use std::assert_matches::assert_matches;
+
+    use super::*;
+
+    macro_rules! test_encoded {
+        ($($STR:ty),+, $text:literal, $expected:literal) => {
+            $({
+                eprintln!("[{}][{:?}] converting from utf8...", std::any::type_name::<$STR>(), $text);
+                let cesu8 = <$STR>::from_utf8($text);
+
+                assert_eq!(
+                    $expected, cesu8.as_bytes(),
+                    "[{}][{:?}] unable to properly encode to CESU-8",
+                    std::any::type_name::<$STR>(), $text
+                );
+
+                eprintln!("[{}][{:?}] converting back to utf8... (prev cesu bytes: {:X?})", std::any::type_name::<$STR>(), $text, cesu8._raw_bytes());
+                let utf8 = cesu8.to_str();
+                assert_eq!(
+                    $text, utf8,
+                    "[{}][{:?}] bad roundtrip from UTF-8 to CESU-8 to UTF-8",
+                    std::any::type_name::<$STR>(), $text
+                );
+            })+
+        };
+        // ($($S:ty),+, $text:literal, $expected:literal) => {
+        //     text_encoded_!($S, $text, $expected);
+        //     text_encoded_!($($S),+, $text, $expected);
+        // };
     }
+
+    // fn test_encoded_same(text: &str, expected: &[u8]) {
+    //     test_encoded::<Cesu8String>(text, expected);
+    //     test_encoded::<Mutf8String>(text, expected);
+    // }
 
     fn test_surrogates(ch: char, expected: &[u8; 6]) {
         let encoded = enc_surrogates(ch as u32);
@@ -72,15 +95,15 @@ mod string {
 
     #[test]
     fn embedded_nuls() {
-        test_encoded(Variant::Standard, "plain", b"plain");
-        test_encoded(Variant::Standard, "start\0end", b"start\0end");
-        test_encoded(Variant::Standard, "\0middle\0", b"\0middle\0");
-        test_encoded(Variant::Standard, "\0\0\0", b"\0\0\0");
+        test_encoded!(Cesu8Str, "plain", b"plain");
+        test_encoded!(Cesu8Str, "start\0end", b"start\0end");
+        test_encoded!(Cesu8Str, "\0middle\0", b"\0middle\0");
+        test_encoded!(Cesu8Str, "\0\0\0", b"\0\0\0");
 
-        test_encoded(Variant::Java, "plain", b"plain");
-        test_encoded(Variant::Java, "start\0end", b"start\xC0\x80end");
-        test_encoded(Variant::Java, "\0middle\0", b"\xC0\x80middle\xC0\x80");
-        test_encoded(Variant::Java, "\0\0\0", b"\xC0\x80\xC0\x80\xC0\x80");
+        test_encoded!(Mutf8Str, "plain", b"plain");
+        test_encoded!(Mutf8Str, "start\0end", b"start\xC0\x80end");
+        test_encoded!(Mutf8Str, "\0middle\0", b"\xC0\x80middle\xC0\x80");
+        test_encoded!(Mutf8Str, "\0\0\0", b"\xC0\x80\xC0\x80\xC0\x80");
     }
 
     #[test]
@@ -92,113 +115,185 @@ mod string {
         assert_eq!(&enc_surrogates('🟣' as u32), b"\xED\xA0\xBD\xED\xBF\xA3");
 
         // These should encode as the same, whether its java variant or not
-        test_encoded_same("plain", b"plain");
-        test_encoded_same("start🟣end", b"start\xED\xA0\xBD\xED\xBF\xA3end");
-        test_encoded_same(
+        test_encoded!(Cesu8Str, Mutf8Str, "plain", b"plain");
+        test_encoded!(Cesu8Str, Mutf8Str, "start🟣end", b"start\xED\xA0\xBD\xED\xBF\xA3end");
+        test_encoded!(Cesu8Str, Mutf8Str,
             "🟣middle🟣",
-            b"\xED\xA0\xBD\xED\xBF\xA3middle\xED\xA0\xBD\xED\xBF\xA3",
+            b"\xED\xA0\xBD\xED\xBF\xA3middle\xED\xA0\xBD\xED\xBF\xA3"
         );
-        test_encoded_same(
+        test_encoded!(Cesu8Str, Mutf8Str,
             "🟣🟣🟣",
-            b"\xED\xA0\xBD\xED\xBF\xA3\xED\xA0\xBD\xED\xBF\xA3\xED\xA0\xBD\xED\xBF\xA3",
+            b"\xED\xA0\xBD\xED\xBF\xA3\xED\xA0\xBD\xED\xBF\xA3\xED\xA0\xBD\xED\xBF\xA3"
         );
     }
 
     #[test]
-    fn from_utf8_inplace() {
+    fn cesu8_from_utf8_into_buf_nocopy() {
+        // no reencoding necessary - use the original string, skipping the buffer
         let text = "hello\0";
-
-        // reuse string
-        {
-            // buffer shouldn't even be used - leave it at length 0
-            let mut buf = [0; 0];
-            let std = Cesu8Str::from_utf8_inplace(text, &mut buf, Variant::Standard)
-                .expect("string to be literal, no io necessary");
-
-            // if borrowed, it comes from the `text` as `buf` is zero-length
-            assert!(
-                matches!(std.bytes, Cow::Borrowed(_)),
-                "did not use str data for Cesu8Str"
-            );
-        }
-
-        // use buffer
-        {
-            // buffer shouldn't even be used - leave it at length 0
-            let mut buf = [0; 16];
-            let std = Cesu8Str::from_utf8_inplace(text, &mut buf, Variant::Java)
-                .expect("there was not enough space in buf");
-
-            // if borrowed, it comes from the `buf` as `text` would have to change
-            assert!(
-                matches!(std.bytes, Cow::Borrowed(_)),
-                "did not use str data for Cesu8Str"
-            );
-            assert_eq!(std.bytes.len(), 7, "string length was not as expected");
-        }
-
-        // not enough space
-        {
-            // buffer shouldn't even be used - leave it at length 0
-            let mut buf = [0; 0];
-            // needs to be Java variant to prevent borrowing from `text`
-            let res = Cesu8Str::from_utf8_inplace(text, &mut buf, Variant::Java);
-
-            assert!(
-                res.is_err(),
-                "there was enough space in buf, with 0-length buf (res = {:?})",
-                res
-            );
-        }
+        let mut buf = [0; 0];
+        let cows = Cesu8Str::from_utf8_into_buf(text, &mut buf);
+        assert_matches!(cows, Cow::Borrowed(_), "didn't reuse original string when re-encoding unnecessary");
+        assert_eq!(cows.as_bytes(), text.as_bytes());
     }
 
     #[test]
-    fn from_cesu8_lossy() {
-        use Variant::*;
-        const _UTF8_REPLACE: &[u8] = b"\xEF\xBF\xBD";
-
-        #[track_caller] // keep panic/error lines correct for each subtest
-        fn assert_lossy<'a, 'b>(
-            raw: &'a [u8],
-            lossy: impl AsRef<[u8]>,
-            variant: Variant,
-            utf8_err: Result<(), Utf8Error>,
-        ) {
-            let parsed = Cesu8Str::from_cesu8_lossy(raw, variant);
-            assert_eq!(lossy.as_ref(), parsed.as_bytes());
-            assert_eq!(utf8_err, parsed.utf8_error);
-        }
-
-        assert_lossy(b"my valid string", "my valid string", Standard, Ok(()));
-
-        // embedded null char replacement
-        assert_lossy(b"start\xC0end", "start\u{FFFD}end", Standard, Ok(()));
-        assert_lossy(b"start\xC0end", "start\u{FFFD}end", Java, Ok(()));
-
-        // missing byte on first half surrogate pair
-        assert_lossy(
-            b"start\xED\xA0\xED\xBF\xA3end",
-            "start\u{FFFD}\u{FFFD}end",
-            Standard,
-            Ok(()),
-        );
-
-        // missing byte on second surrogate pair
-        assert_lossy(
-            b"start\xED\xA0\xBD\xED\xBFend",
-            "start\u{FFFD}\u{FFFD}end",
-            Standard,
-            Ok(()),
-        );
-
-        // missing byte on second surrogate pair, with valid CESU8 for UTF8 error
-        assert_lossy(
-            b"start\xED\xA0\xBD\xED\xBF\xA3middle\xED\xA0\xBD\xED\xBFend",
-            b"start\xED\xA0\xBD\xED\xBF\xA3middle\xEF\xBF\xBD\xEF\xBF\xBDend",
-            Standard,
-            Err(utf8err_new(5, Some(1))),
-        );
+    fn mutf8_from_utf8_into_buf_with_space() {
+        // reencode into a perfectly sized buffer
+        let text = "hello\0";
+        let mut buf = [0; 7];
+        let cows = Mutf8Str::from_utf8_into_buf(text, &mut buf);
+        assert_matches!(cows, Cow::Borrowed(_), "didn't use provided stack buf when re-encoding with enough space");
+        assert_eq!(b"hello\xC0\x80", cows.as_bytes(), "bad reencoding");
     }
+
+    #[test]
+    fn mutf8c_from_utf8_into_buf_with_space() {
+        // reencode into a perfectly sized buffer
+        let text = "hello\0";
+        let mut buf = [0; 8];
+        let cows = Mutf8CStr::from_utf8_into_buf(text, &mut buf);
+        assert_matches!(cows, Cow::Borrowed(_), "didn't use provided stack buf when re-encoding with enough space");
+        assert_eq!(b"hello\xC0\x80\0", cows.as_bytes_with_nul(), "bad reencoding");
+    }
+    
+    #[test]
+    fn mutf8_from_utf8_into_buf_without_space() {
+        // try to reencode into too small buffer - error (no space for reencoding nul)
+        // assert error state is as expected
+        let text = "hello\0";
+        let mut buf = [0; 6]; // uhoh - forgot space to reencode nul!
+        let res = Mutf8Str::try_from_utf8_into_buf(text, &mut buf);
+        let Err(err) = res else {
+            panic!("didn't error on too-small buffer when reallocation not requested");
+        };
+        assert_eq!(b"hello", err.encoded_bytes(), "not enough space, partial codepoints were written?");
+        assert_eq!(5, err.bytes_read(), "unexpected number of bytes consumed");
+        assert_eq!("hello", err.source_str_used());
+        assert_eq!("\0", err.source_str_rest());
+        let allocated: Mutf8String = err.finish();
+        assert_eq!(b"hello\xC0\x80", allocated.as_bytes());
+    }
+
+    #[test]
+    fn mutf8c_from_utf8_into_buf_without_space_reencode_end() {
+        // try to reencode into too small buffer - error (no space for reencoding nul)
+        // assert error state is as expected
+        let text = "hello\0";
+        let mut buf = [0; 6]; // uhoh - forgot space to reencode nul!
+        let res = Mutf8CStr::try_from_utf8_into_buf(text, &mut buf);
+        let Err(err) = res else {
+            panic!("didn't error on too-small buffer when reallocation not requested");
+        };
+        assert_eq!(b"hello", err.encoded_bytes(), "not enough space, partial codepoints were written?");
+        assert_eq!(5, err.bytes_read(), "unexpected number of bytes consumed");
+        assert_eq!("hello", err.source_str_used());
+        assert_eq!("\0", err.source_str_rest());
+        let allocated: Mutf8CString = err.finish();
+        assert_eq!(b"hello\xC0\x80\0", allocated.as_bytes_with_nul());
+    }
+    #[test]
+    fn mutf8_from_utf8_into_buf_without_space_reencode_mid() {
+        // try to reencode into too small buffer - error (no space for reencoding nul)
+        // assert error state is as expected
+        let text = "hel\0lo";
+        let mut buf = [0; 6]; // uhoh - forgot space to reencode nul!
+        let res = Mutf8Str::try_from_utf8_into_buf(text, &mut buf);
+        let Err(err) = res else {
+            panic!("didn't error on too-small buffer when reallocation not requested");
+        };
+        assert_eq!(b"hel\xC0\x80l", err.encoded_bytes(), "not enough space, partial codepoints were written?");
+        assert_eq!(5, err.bytes_read(), "unexpected number of bytes consumed");
+        assert_eq!("hel\0l", err.source_str_used());
+        assert_eq!("o", err.source_str_rest());
+        let allocated: Mutf8String = err.finish();
+        assert_eq!(b"hel\xC0\x80lo", allocated.as_bytes());
+    }
+
+    #[test]
+    fn mutf8c_from_utf8_into_buf_without_space_for_nul() {
+        // try to reencode into too small buffer - error (no space for nul-terminator)
+        let text = "hello\0";
+        let mut buf = [0; 7]; // uhoh - forgot space to add nul-terminator!
+        let res = Mutf8CStr::try_from_utf8_into_buf(text, &mut buf);
+        let Err(err) = res else {
+            panic!("didn't error on too-small buffer when reallocation not requested");
+        };
+        assert_eq!(b"hello\xC0\x80", err.encoded_bytes(), "not enough space, partial codepoints were written?");
+        assert_eq!(6, err.bytes_read(), "unexpected number of bytes consumed");
+        assert_eq!("hello\0", err.source_str_used());
+        assert_eq!("", err.source_str_rest());
+        let allocated: Mutf8CString = err.finish();
+        assert_eq!(b"hello\xC0\x80\0", allocated.as_bytes_with_nul());
+    }
+
+    #[test]
+    fn mutf8c_from_utf8_into_buf_without_space_for_reencode() {
+        // reencode into an owned buffer, provided buffer is too small
+        let text = "hello\0";
+        let mut buf = [0; 6]; // uhoh - forgot space to reencode nul!
+        let cows = Mutf8CStr::from_utf8_into_buf(text, &mut buf);
+        assert_matches!(cows, Cow::Owned(_), "didn't reencode to allocated string when buffer to small");
+        assert_eq!(b"hello\xC0\x80\0", cows.as_bytes_with_nul(), "bad reencoding");
+    }
+
+    #[test]
+    fn mutf8c_from_utf8_into_buf_without_space_for_nul_term() {
+        // reencode into an owned buffer, provided buffer is too small
+        let text = "hello\0";
+        let mut buf = [0; 7]; // uhoh - forgot space for a nul terminator!
+        let cows = Mutf8CStr::from_utf8_into_buf(text, &mut buf);
+        assert_matches!(cows, Cow::Owned(_), "didn't reencode to allocated string when buffer to small");
+        assert_eq!(b"hello\xC0\x80\0", cows.as_bytes_with_nul(), "bad reencoding");
+    }
+
+    // #[test]
+    // fn from_cesu8_lossy() {
+    //     use Variant::*;
+    //     const _UTF8_REPLACE: &[u8] = b"\xEF\xBF\xBD";
+
+    //     #[track_caller] // keep panic/error lines correct for each subtest
+    //     fn assert_lossy<'a, 'b>(
+    //         raw: &'a [u8],
+    //         lossy: impl AsRef<[u8]>,
+    //         variant: Variant,
+    //         utf8_err: Result<(), Utf8Error>,
+    //     ) {
+    //         let parsed = Cesu8Str::from_cesu8_lossy(raw, variant);
+    //         assert_eq!(lossy.as_ref(), parsed.as_bytes());
+    //         assert_eq!(utf8_err, parsed.utf8_error);
+    //     }
+
+    //     assert_lossy(b"my valid string", "my valid string", Standard, Ok(()));
+
+    //     // embedded null char replacement
+    //     assert_lossy(b"start\xC0end", "start\u{FFFD}end", Standard, Ok(()));
+    //     assert_lossy(b"start\xC0end", "start\u{FFFD}end", Java, Ok(()));
+
+    //     // missing byte on first half surrogate pair
+    //     assert_lossy(
+    //         b"start\xED\xA0\xED\xBF\xA3end",
+    //         "start\u{FFFD}\u{FFFD}end",
+    //         Standard,
+    //         Ok(()),
+    //     );
+
+    //     // missing byte on second surrogate pair
+    //     assert_lossy(
+    //         b"start\xED\xA0\xBD\xED\xBFend",
+    //         "start\u{FFFD}\u{FFFD}end",
+    //         Standard,
+    //         Ok(()),
+    //     );
+
+    //     // missing byte on second surrogate pair, with valid CESU8 for UTF8 error
+    //     assert_lossy(
+    //         b"start\xED\xA0\xBD\xED\xBF\xA3middle\xED\xA0\xBD\xED\xBFend",
+    //         b"start\xED\xA0\xBD\xED\xBF\xA3middle\xEF\xBF\xBD\xEF\xBF\xBDend",
+    //         Standard,
+    //         Err(utf8err_new(5, Some(1))),
+    //     );
+    // }
 }
 
 mod string_impls {
@@ -207,8 +302,8 @@ mod string_impls {
     #[test]
     fn eq_across_variants() {
         let reference = "begin\0end";
-        let cesu_nul = Cesu8Str::from_utf8(reference, Variant::Standard);
-        let mutf_nul = Cesu8Str::from_utf8(reference, Variant::Java);
+        let cesu_nul = Cesu8Str::from_utf8(reference);
+        let mutf_nul = Mutf8Str::from_utf8(reference);
 
         // while the bytes should be different, they should still be equilavent
         assert_ne!(cesu_nul.as_bytes(), mutf_nul.as_bytes());
@@ -216,21 +311,21 @@ mod string_impls {
     }
 
     #[test]
-    fn add_strings() {
-        let mut concat = Cesu8Str::from_utf8("begin\0end", Variant::Standard);
-        concat = concat + "**basic string";
-        concat = concat + &Cesu8Str::from_utf8("**owned\0cesu", Variant::Java);
+    fn add_cesu8() {
+        let mut concat = Cesu8Str::from_utf8("begin\0end").into_owned();
+        concat = concat + "**basic string🟣";
+        concat = concat + Cesu8Str::from_utf8("**owned\0cesu").as_ref();
 
-        assert_eq!(concat.as_bytes(), b"begin\0end**basic string**owned\0cesu");
+        assert_eq!(concat.as_bytes(), b"begin\0end**basic string\xED\xA0\xBD\xED\xBF\xA3**owned\0cesu");
+    }
 
-        let mut addassign = Cesu8Str::from_utf8("begin\0end", Variant::Standard);
-        addassign += "**basic string";
-        addassign += &Cesu8Str::from_utf8("**owned\0cesu", Variant::Java); // add a Java variant to a standard string
+    #[test]
+    fn add_mutf8c() {
+        let mut concat = Mutf8CString::from_utf8_with_nul("begin\0end\0".to_owned());
+        concat = concat + "**🟣basic string";
+        concat = concat + &*Mutf8CString::from_utf8("**owned\0cesu\0".to_owned());
 
-        assert_eq!(
-            addassign.as_bytes(),
-            b"begin\0end**basic string**owned\0cesu"
-        );
+        assert_eq!(concat.as_bytes_with_nul(), b"begin\xC0\x80end**\xED\xA0\xBD\xED\xBF\xA3basic string**owned\xC0\x80cesu\xC0\x80\0");
     }
 
 }
@@ -248,7 +343,7 @@ mod legacy_api {
         ];
         assert_eq!(
             Cow::Borrowed("M日\u{10401}\u{7F}"),
-            from_cesu8(data).unwrap()
+            Cesu8Str::try_from_bytes(data).unwrap().to_str()
         );
 
         // We used to have test data from the CESU-8 specification, but when we
@@ -345,9 +440,9 @@ mod decoding {
     fn utf8_error_len_is_propagated() {
         // we have valid CESU-8, followed by invalid (cut-short) UTF-8
         // 0xE6 starts a 3-byte UTF-8 sequence that is cut short
-        const TEST_DATA: &[u8] = b"\xED\xA4\xB8\xED\xB1\xA0\xE6\x82";
+        const TEST_DATA: &[u8] = b"\xED\xA4\xB8\xED\xB1\xA0\xE6\x82"; 
 
-        let err = Cesu8Str::from_cesu8(TEST_DATA, Variant::Standard)
+        let err = Cesu8Str::try_from_bytes(TEST_DATA)
             .expect_err("unterminated 3-byte UTF-8 sequence should cause CESU-8 error");
 
         // proper CESU-8 error should report we need more data to finish the sequence
@@ -362,47 +457,20 @@ mod decoding {
             "CESU-8 error should be valid until unterminated UTF-8"
         );
 
-        // actual UTF-8 error should report the first UTF-8 error in the string - the first one
-        let utf8_err = err
-            .utf8_error()
-            .expect_err("invalid UTF-8 should set utf8_error");
-        assert_eq!(
-            Some(1),
-            utf8_err.error_len(),
-            "CESU-8 surrogate pair should be invalid UTF-8"
-        );
-        assert_eq!(
-            0,
-            utf8_err.valid_up_to(),
-            "CESU-8 surrogate pair should be invalid UTF-8"
-        );
-
         // test proper string internal assertions are still held
-        let valid = Cesu8Str::from_cesu8(&TEST_DATA[..err.valid_up_to()], Variant::Standard)
+        let valid = Cesu8Str::try_from_bytes(&TEST_DATA[..err.valid_up_to()])
             .expect("removing invalid portion should result in valid CESU-8");
-        let utf8_err_valid = valid
-            .utf8_error()
-            .expect_err("invalid UTF-8 should set utf8_error");
-        assert_eq!(
-            Some(1),
-            utf8_err_valid.error_len(),
-            "CESU-8 surrogate pair should be invalid UTF-8"
-        );
-        assert_eq!(
-            0,
-            utf8_err_valid.valid_up_to(),
-            "CESU-8 surrogate pair should be invalid UTF-8"
-        );
+        assert_eq!(valid.as_bytes(), b"\xED\xA4\xB8\xED\xB1\xA0");
     }
 
     #[test]
     fn utf8_error_len_is_propagated_separated() {
         // we have valid CESU-8, followed by invalid (cut-short) UTF-8
         // 0xE6 starts a 3-byte UTF-8 sequence that is cut short
-        // adding a space to exercise different code paths
+        // added space to exercise different code paths
         const TEST_DATA: &[u8] = b"\xED\xA4\xB8\xED\xB1\xA0 \xE6\x82";
 
-        let err = Cesu8Str::from_cesu8(TEST_DATA, Variant::Standard)
+        let err = Cesu8Str::try_from_bytes(TEST_DATA)
             .expect_err("unterminated 3-byte UTF-8 sequence should cause CESU-8 error");
 
         // proper CESU-8 error should report we need more data to finish the sequence
@@ -417,37 +485,10 @@ mod decoding {
             "CESU-8 error should be valid until unterminated UTF-8"
         );
 
-        // actual UTF-8 error should report the first UTF-8 error in the string - the first one
-        let utf8_err = err
-            .utf8_error()
-            .expect_err("invalid UTF-8 should set utf8_error");
-        assert_eq!(
-            Some(1),
-            utf8_err.error_len(),
-            "CESU-8 surrogate pair should be invalid UTF-8"
-        );
-        assert_eq!(
-            0,
-            utf8_err.valid_up_to(),
-            "CESU-8 surrogate pair should be invalid UTF-8"
-        );
-
         // test proper string internal assertions are still held
-        let valid = Cesu8Str::from_cesu8(&TEST_DATA[..err.valid_up_to()], Variant::Standard)
+        let valid = Cesu8Str::try_from_bytes(&TEST_DATA[..err.valid_up_to()])
             .expect("removing invalid portion should result in valid CESU-8");
-        let utf8_err_valid = valid
-            .utf8_error()
-            .expect_err("invalid UTF-8 should set utf8_error");
-        assert_eq!(
-            Some(1),
-            utf8_err_valid.error_len(),
-            "CESU-8 surrogate pair should be invalid UTF-8"
-        );
-        assert_eq!(
-            0,
-            utf8_err_valid.valid_up_to(),
-            "CESU-8 surrogate pair should be invalid UTF-8"
-        );
+        assert_eq!(valid.as_bytes(), b"\xED\xA4\xB8\xED\xB1\xA0 ");
     }
 
     #[test]
@@ -457,11 +498,10 @@ mod decoding {
 
         // let bytes = b"\xed\x8d\xad";
         // last three bytes are valid UTF-8, first 6 are CESU-8 surrogate pair
-        let bytes = b"\xed\xa3\xbc\xed\xbe\x97\xed\x85\xae";
+        let bytes = b"\xED\xA0\xBD\xED\xBF\xA3\xED\x90\x90";
         // let as_str = std::str::from_utf8(bytes).unwrap();
 
-        // let _ = Cesu8Str::from_utf8(as_str, Variant::Standard);
-        let _ = Cesu8Str::from_cesu8(bytes, Variant::Standard).unwrap();
+        let valid = Cesu8Str::try_from_bytes(bytes).unwrap();
+        assert_eq!(valid.to_str(), "🟣\u{d410}")
     }
-
 }

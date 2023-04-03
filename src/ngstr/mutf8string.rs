@@ -7,7 +7,7 @@ use super::preamble::*;
 
 #[derive(PartialEq, Eq, Clone, Default)]
 pub struct Mutf8String {
-    inner: Vec<u8>,
+    pub(crate) inner: Vec<u8>,
 }
 
 impl Mutf8String {
