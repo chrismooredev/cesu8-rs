@@ -143,12 +143,12 @@ pub mod preamble {
     pub use std::ffi::{CStr, CString};
 
     // crate-internal
-    pub use cesu8str::Cesu8Str;
-    pub use cesu8string::Cesu8String;
-    pub use mutf8str::Mutf8Str;
-    pub use mutf8string::Mutf8String;
-    pub use mutf8cstr::Mutf8CStr;
-    pub use mutf8cstring::Mutf8CString;
+    pub use super::cesu8str::Cesu8Str;
+    pub use super::cesu8string::Cesu8String;
+    pub use super::mutf8str::Mutf8Str;
+    pub use super::mutf8string::Mutf8String;
+    pub use super::mutf8cstr::Mutf8CStr;
+    pub use super::mutf8cstring::Mutf8CString;
     pub use super::NGCesu8CError;
     pub use super::prims::EncodingError;
     pub use super::FromBytesWithNulError;
