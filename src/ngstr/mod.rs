@@ -132,7 +132,7 @@ impl_from_with_nul!(FromUtf8WithNulError, "[`String`]");
 
 
 pub mod preamble {
-    pub(crate) use super::*;
+    pub(crate) use crate::ngstr::*;
 
     // pub(crate) use super::check_term;
     // pub(crate) use super::prims;
