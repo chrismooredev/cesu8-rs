@@ -1,6 +1,9 @@
 #![feature(trace_macros)]
 #![feature(log_syntax)]
 
+#[cfg(unix)]
+mod inner_test {
+
 use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::ffi::OsStr;
@@ -97,8 +100,8 @@ emit_test_case!(entry);
 // 
 // Tokio feels like too heavy of a dependency to bring in just for this
 // (PRs welcome for that if someone wants to develop it)
-#[cfg(any(not(unix), not(feature = "build-binary")))]
-compile_error!("unable to run cesu8str_converts_stdio test on non-unix platform without build-binary feature");
+// #[cfg(any(not(unix), not(feature = "build-binary")))]
+// compile_error!("unable to run cesu8str_converts_stdio test on non-unix platform without build-binary feature");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InputMethod {
@@ -352,6 +355,7 @@ impl IOHandler for OutputHandler {
     }
 }
 
+#[cfg(unix)]
 #[derive(Debug)]
 struct TestConfig {
     name: &'static str,
@@ -528,3 +532,5 @@ impl TestConfig {
 // fn binary_closes_gracefully_on_stdout_closure() {
 //     todo!("test binary with stdout closing before end of output");
 // }
+
+}
