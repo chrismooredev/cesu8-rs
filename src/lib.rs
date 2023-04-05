@@ -116,16 +116,18 @@ pub mod preamble {
 
 pub use ngstr::{
     NGCesu8CError,
+    cesu8str::Cesu8Str,
+    cesu8string::Cesu8String,
     mutf8str::Mutf8Str,
     mutf8cstr::Mutf8CStr,
-    mutf8cstr::FromStrWithNulError,
     mutf8cstring::Mutf8CString,
+    mutf8cstr::FromStrWithNulError,
     mutf8cstring::FromMutf8BytesWithNulError,
 };
 
 pub use crate::decoding::Cesu8Error;
 pub use crate::legacy_api::*;
-pub use crate::string::Cesu8Str;
+pub use crate::string::Cesu8Str as LegacyCesu8Str;
 pub(crate) use crate::string::default_cesu8_capacity;
 
 #[cfg(test)]
