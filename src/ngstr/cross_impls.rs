@@ -1,7 +1,7 @@
 
 use std::borrow::Cow;
 
-use crate::ngstr::preamble::*;
+use crate::ngstr::prelude::*;
 
 macro_rules! impl_expr_from {
     ($($lt:lifetime),*; $from:ty, $to:ty, $map:expr) => {

@@ -78,8 +78,10 @@ impl<'s, S: ?Sized> TryFromUtf8Error<'s, S> {
 }
 
 macro_rules! impl_try_from_utf8_error_finish {
-    ($t: ty) => {
+    ($t: ty, $ownedvariant: literal) => {
         impl<'s> TryFromUtf8Error<'s, $t> {
+            /// Finishes the conversion process from a [`str`] that requires conversion, to an owned
+            #[doc = concat!("[`", $ownedvariant, "`][prelude::", $ownedvariant,"]")]
             pub fn finish(mut self) -> <$t as ToOwned>::Owned {
                 let mut v = Vec::with_capacity(crate::default_cesu8_capacity(self.source_str.len()) + 1);
                 v.extend_from_slice(&self.user_buffer[..self.encode_state.written]); // no nul terminator
@@ -99,9 +101,9 @@ macro_rules! impl_try_from_utf8_error_finish {
     }
 }
 
-impl_try_from_utf8_error_finish!(cesu8str::Cesu8Str);
-impl_try_from_utf8_error_finish!(mutf8str::Mutf8Str);
-impl_try_from_utf8_error_finish!(mutf8cstr::Mutf8CStr);
+impl_try_from_utf8_error_finish!(cesu8str::Cesu8Str, "Cesu8String");
+impl_try_from_utf8_error_finish!(mutf8str::Mutf8Str, "Mutf8String");
+impl_try_from_utf8_error_finish!(mutf8cstr::Mutf8CStr, "Mutf8CString");
 
 macro_rules! impl_from_with_nul {
     ($e: ident, $srcitem: literal) => {
@@ -115,9 +117,11 @@ macro_rules! impl_from_with_nul {
         }
 
         impl $e {
+            /// The specific kind of error encountered
             pub fn kind(&self) -> NGCesu8CError {
                 self.kind
             }
+            /// Receive the unmodified, originally provided owned byte string
             pub fn into_inner(self) -> Vec<u8> {
                 self.bytes
             }
@@ -126,12 +130,9 @@ macro_rules! impl_from_with_nul {
 }
 
 impl_from_with_nul!(FromBytesWithNulError, "[`Vec<u8>`]");
-impl_from_with_nul!(FromUtf8WithNulError, "[`String`]");
+// impl_from_with_nul!(FromUtf8WithNulError, "[`String`]");
 
-
-
-
-pub mod preamble {
+pub mod prelude {
     pub(crate) use crate::ngstr::*;
 
     // pub(crate) use super::check_term;
@@ -149,10 +150,11 @@ pub mod preamble {
     pub use super::mutf8string::Mutf8String;
     pub use super::mutf8cstr::Mutf8CStr;
     pub use super::mutf8cstring::Mutf8CString;
+
     pub use super::NGCesu8CError;
     pub use super::prims::EncodingError;
+    pub use super::TryFromUtf8Error;
     pub use super::FromBytesWithNulError;
-    pub use super::FromUtf8WithNulError;
 }
 
 // trait bounds used as a sort of compile time lint, to ensure they are all implemented
@@ -459,11 +461,20 @@ macro_rules! impl_str_encoding_meths {
             match self.as_bytes().get(index) {
                 None => index == self.len(),
                 Some(0xED) => {
-                    // this function is used to test where things can be inserted into
-                    // don't allow inserting in the middle of a surrogate pair
-                    // also must account for multiple pairs in a row
-                    todo!("is_char_boundary on surrogate pair, test if second codepoint or not");
-                    // start with `0` or `11`
+                    // this is a valid string - there are at least three bytes available
+                    let surrogate_pair_one = &self.as_bytes()[index..index+3];
+                    if std::str::from_utf8(surrogate_pair_one).is_ok() {
+                        // a three-byte UTF8 sequence
+                        true
+                    } else {
+                        // part of a six-byte surrogate pair
+
+                        // this function is used to test where things can be inserted into
+                        // don't allow inserting in the middle of a surrogate pair
+                        // also must account for multiple pairs in a row
+                        todo!("is_char_boundary on surrogate pair, test if second codepoint or not");
+                        // start with `0` or `11`
+                    }
                 },
                 // https://github.com/rust-lang/rust/blob/938afba8996fe058b91c61b23ef5d000cb9ac169/library/core/src/num/mod.rs#L1016
                 Some(&b) => (b as i8) >= -0x40,
@@ -562,11 +573,11 @@ macro_rules! impl_str_encoding_meths {
         /// This function will cast the provided `bytes` to a `Mutf8CStr`
         /// wrapper after ensuring that the byte slice is nul-terminated
         /// and does not contain any interior nul bytes. This also checks
-        /// for mutf-8 compliance.
+        /// for MUTF-8 compliance.
         ///
-        /// If the nul byte may not be at the end,
-        /// [`Mutf8CStr::from_bytes_until_nul`] can be used instead.
-        ///
+        // /// If the nul byte may not be at the end,
+        // /// [`Mutf8CStr::from_bytes_until_nul`] can be used instead.
+        // ///
         /// # Examples
         ///
         /// ```
@@ -639,6 +650,12 @@ macro_rules! impl_str_encoding_meths {
             }
         }
 
+        /// Attempts to validate UTF-8 as a nul-terminated MUTF-8 string. If this isn't possible, an error is returned.
+        /// 
+        /// Requirements
+        /// - The last byte **must** by a nul-byte.
+        /// - There must not be other interior nul-bytes.
+        /// - There are no four-byte UTF-8 sequences.
         pub fn try_from_utf8_with_nul(s: &str) -> Result<&Self, NGCesu8CError> {
             let inner = s.strip_suffix('\0')
                 .ok_or(NGCesu8CError::NotNulTerminated)?;
@@ -679,7 +696,7 @@ macro_rules! impl_str_encoding_meths {
         /// Note the following additions to the traditional `CStr` type:
         /// * The memory pointed to be `ptr` must be valid according to `Self`'s encoding.
         /// In comparison to UTF-8:
-        ///    * (mutf8 only) nul bytes (`'\0'`) are converted to the null byte sequence (`[0xC0, 0x80]`)
+        ///    * (mutf8 only) nul bytes (`'\0'`) are converted to the null byte sequence (`b"\xC0\x80"`)
         ///    * (cesu8 + mutf8) four-byte codepoints are converted into the appropriate surrogate pairs
         /// 
         /// # Caveat
@@ -696,6 +713,31 @@ macro_rules! impl_str_encoding_meths {
             Self::from_bytes_with_nul(cs.to_bytes_with_nul()).expect("invalid CStr passed to from_bytes_with_nul")
         }
 
+        /// Wraps a raw C string with a safe wrapper of this strings encoding.
+        /// 
+        /// # Safety
+        /// * The memory pointed to by `ptr` must contain a valid nul terminator at the end of the string.
+        /// * `ptr` must be [valid] for reads of bytes up to and including the null terminator.
+        ///   In particular:
+        ///     * The entire memory range of this `Self` must be contained within a single allocated object
+        ///     * `ptr` must be non-null even for a zero-length mutf8 string
+        /// * The memory referenced by the returned `Self` must not be mutated for the duration of lifetime `'a`.
+        /// * The size of the string is at most `isize::MAX`
+        /// 
+        /// Note the following additions to the traditional `CStr` type:
+        /// * The memory pointed to be `ptr` must be valid according to `Self`'s encoding.
+        /// In comparison to UTF-8:
+        ///    * (mutf8 only) nul bytes (`'\0'`) are converted to the null byte sequence (`b"\xC0\x80"`)
+        ///    * (cesu8 + mutf8) four-byte codepoints are converted into the appropriate surrogate pairs
+        /// 
+        /// # Caveat
+        ///
+        /// The lifetime for the returned slice is inferred from its usage. To prevent accidental misuse,
+        /// it's suggested to tie the lifetime to whichever source lifetime is safe in the context,
+        /// such as by providing a helper function taking the lifetime of a host value for the slice,
+        /// or by explicit annotation.
+        /// 
+        /// [valid]: core::ptr#safety
         pub unsafe fn from_ptr_unchecked<'a>(ptr: *const c_char) -> &'a Self {
             let cs = CStr::from_ptr(ptr);
 
@@ -737,6 +779,7 @@ macro_rules! impl_str_encoding_meths {
                 .expect("encoded C-style string does not fit CStr requirements")
         }
 
+        /// Returns the size of the string in bytes, including the nul byte.
         pub fn len_with_nul(&self) -> usize {
             self._raw_bytes().len()
         }
@@ -894,6 +937,9 @@ macro_rules! impl_string_encoding_meths {
             inner
         }
 
+        /// Create an owned string with pre-allocated capacity.
+        /// 
+        /// If applicable, the provided capacity count does not include a nul-terminator.
         pub fn with_capacity(mut capacity: usize) -> Self {
             if <Self as Deref>::Target::NUL_TERM { capacity += 1; }
             let mut v = Vec::with_capacity(capacity);
@@ -901,6 +947,16 @@ macro_rules! impl_string_encoding_meths {
             unsafe { Self::_from_bytes_unchecked(v) }
         }
 
+        /// Returns the size of the internal allocation for this string.
+        /// 
+        /// Note that unlike [`with_capacity`][Self::with_capacity], this includes the nul-terminator when applicable.
+        pub fn capacity(&self) -> usize {
+            self.inner.capacity()
+        }
+
+        /// Encodes a UTF-8 string and inserts it into this string at the provided index.
+        /// 
+        /// The index may not lie within a character boundary.
         pub fn insert_str(&mut self, idx: usize, string: &str) {
             assert!(self.is_char_boundary(idx), "provided index is not a valid character boundary");
 
@@ -919,12 +975,20 @@ macro_rules! impl_string_encoding_meths {
                     self.inner.push(b'\0');
                 }
             } else {
+                // re-encode it, and splice it in
+                // let encoded = <Self as Deref>::Target::from_utf8(string);
                 let encoded = prims::utf8_to_cesu8_vec::<{prims::DEFAULT_CHUNK}, {<Self as Deref>::Target::ENCODE_NUL}>(Cow::Borrowed(string));
                 self.inner.splice(idx..idx, encoded.iter().copied());
             }
         }
+        
+        /// Insert this string at the specified index.
+        /// 
+        /// # Panics
+        /// If the index is on a character boundary.
         pub fn insert_at(&mut self, idx: usize, string: &<Self as Deref>::Target) {
             assert!(self.is_char_boundary(idx), "provided index is not a valid character boundary");
+            // as_bytes leaves out the nul-terminator if necessary
             self.inner.splice(idx..idx, string.as_bytes().iter().copied());
         }
 
@@ -1006,7 +1070,7 @@ macro_rules! impl_string_encoding_meths {
             }
         }
 
-        /// Equivalent to [`into_bytes()`] except that the
+        /// Equivalent to [`Mutf8String::into_bytes()`] except that the
         /// returned vector includes the trailing nul terminator.
         ///
         /// # Examples
@@ -1036,6 +1100,7 @@ macro_rules! impl_string_encoding_meths {
             unsafe { Self::from_bytes_with_nul_unchecked(raw) }
         }
 
+        /// Converts this string to a CString, preserving the internal allocation.
         pub fn into_cstring(self) -> CString {
             unsafe { CString::from_vec_with_nul_unchecked(self._into_bytes_unchecked()) }
         }
@@ -1047,12 +1112,12 @@ macro_rules! impl_string_encoding_meths {
         /// should *not* use the standard C `free()` function to deallocate
         /// this string.
         ///
-        /// Failure to call [`Self::from_raw`] will lead to a memory leak.
+        /// Failure to call [`from_raw`] will lead to a memory leak.
         ///
         /// The C side must **not** modify the length of the string (by writing a
         /// `null` somewhere inside the string or removing the final one) before
-        /// it makes it back into Rust using [`Mutf8CString::from_raw`]. See the safety section
-        /// in [`Mutf8CString::from_raw`].
+        /// it makes it back into Rust using [`from_raw`]. See the safety section
+        /// in [`from_raw`].
         ///
         /// # Examples
         ///
@@ -1073,6 +1138,8 @@ macro_rules! impl_string_encoding_meths {
         ///     let _ = Mutf8CString::from_raw(ptr);
         /// }
         /// ```
+        /// 
+        /// [`from_raw`]: Self::from_raw
         #[must_use = "`self` will be dropped if the result is not used"]
         pub fn into_raw(self) -> *mut c_char {
             let boxed = self._into_bytes_unchecked().into_boxed_slice();
@@ -1260,7 +1327,7 @@ impl_simple_str_traits!(string mutf8cstring::Mutf8CString);
 
 #[test]
 fn strings_impl_expected_traits() {
-    use crate::preamble::*;
+    use crate::prelude::*;
     
     // check for some common trait impls that should assist in general usability
 

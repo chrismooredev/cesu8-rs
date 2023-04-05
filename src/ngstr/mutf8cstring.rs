@@ -3,7 +3,7 @@ use std::ops::Deref;
 use std::borrow::Cow;
 use std::str;
 
-use super::preamble::*;
+use super::prelude::*;
 
 /// The error when trying to create a Mutf8CString from a byte buffer.
 #[derive(Debug, PartialEq, Eq, Clone)]

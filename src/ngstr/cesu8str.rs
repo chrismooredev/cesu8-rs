@@ -1,5 +1,5 @@
 
-use crate::ngstr::preamble::*;
+use crate::ngstr::prelude::*;
 
 /// A borrowed CESU-8 string. This type is not nul-terminated, may contain interior nuls, and encodes characters that
 /// are normally four bytes in UTF8, as two, three byte surrogate pairs.
@@ -15,7 +15,13 @@ impl Cesu8Str {
 }
 
 impl Cesu8Str {
+    /// Determines if this string encoding uses literal nul bytes. If true, then literal nul bytes are not allowed
+    /// within the string's contents.
     pub const ENCODE_NUL: bool = false;
+    /// Determines if this string maintains a literal nul byte as a terminator. This makes it functionally equilavent
+    /// to a [`CStr`], including any encoding guarantees provided by the string type.
+    /// 
+    /// If this is `true`, then [`Self::ENCODE_NUL`] must also be `true`.
     pub const NUL_TERM: bool = false;
 
     /// Uses pointer magic to transmute a byte slice to an instance of Cesu8Str

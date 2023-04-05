@@ -2,7 +2,8 @@
 
 use crate::from_utf8_slice;
 use crate::encoding::utf8err_inc;
-use crate::{Cesu8Str, Variant};
+use crate::string::Cesu8Str;
+use crate::Variant;
 use std::borrow::{Borrow, Cow};
 use std::cmp::Ordering;
 use std::fmt;

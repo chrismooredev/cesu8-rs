@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use crate::encoding::utf8err_new;
 use crate::ngstr::prims::{enc_surrogates, dec_surrogates};
-use crate::preamble::*;
+use crate::prelude::*;
 
 // not a proper character? but it validates through std::char::from_u32(0xd7ff) and it kinda stands out visually
 // notably: it starts with ED: \xED\x90\x90
@@ -23,6 +23,20 @@ mod chars {
         assert_eq!(PURPLE_CIRCLE_UTF8.chars().next().unwrap(), PURPLE_CIRCLE_CHAR);
         let bytes = enc_surrogates(PURPLE_CIRCLE_CHAR as u32);
         assert_eq!(bytes, PURPLE_CIRCLE_CESU8);
+    }
+
+    /// Ensure that the first and second half of a six-byte surrogate pair sequence are not considered
+    /// valid UTF-8 characters by the standard library. This is an invariant expected in multiple places,
+    /// particularly when validating encoded bytes to UTF-8, or using stdlib functions to validate raw bytes.
+    #[test]
+    fn surrogate_pair_half_is_invalid_utf8() {
+        let half1 = &PURPLE_CIRCLE_CESU8[..3];
+        let half2 = &PURPLE_CIRCLE_CESU8[3..];
+
+        assert!(std::str::from_utf8(half1).is_err());
+        assert!(std::str::from_utf8(half2).is_err());
+
+        assert!(std::str::from_utf8(THREE_BYTE_ED_UTF8.as_bytes()).is_ok());
     }
 }
 

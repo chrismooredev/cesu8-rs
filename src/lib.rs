@@ -108,10 +108,10 @@ mod unicode;
 /// 
 mod ngstr;
 
-/// A preamble including most relavent structs for the crate, including re-exports of some stdlib helpers
+/// A prelude including most relavent structs for the crate, including re-exports of some stdlib helpers
 /// such as `Cow`, `CStr`, `CString`, and `Deref`.
-pub mod preamble {
-    pub use crate::ngstr::preamble::*;
+pub mod prelude {
+    pub use crate::ngstr::prelude::*;
 }
 
 pub use ngstr::{
@@ -123,10 +123,14 @@ pub use ngstr::{
     mutf8cstring::Mutf8CString,
     mutf8cstr::FromStrWithNulError,
     mutf8cstring::FromMutf8BytesWithNulError,
+
+    TryFromUtf8Error,
+    FromBytesWithNulError,
 };
 
 pub use crate::decoding::Cesu8Error;
 pub use crate::legacy_api::*;
+#[allow(deprecated)]
 pub use crate::string::Cesu8Str as LegacyCesu8Str;
 pub(crate) use crate::string::default_cesu8_capacity;
 

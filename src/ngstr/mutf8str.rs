@@ -1,5 +1,5 @@
 
-use super::preamble::*;
+use super::prelude::*;
 
 /// A borrowed MUTF-8 string.
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
@@ -14,7 +14,13 @@ impl Mutf8Str {
 }
 
 impl Mutf8Str {
+    /// Determines if this string encoding uses literal nul bytes. If true, then literal nul bytes are not allowed
+    /// within the string's contents.
     pub const ENCODE_NUL: bool = true;
+    /// Determines if this string maintains a literal nul byte as a terminator. This makes it functionally equilavent
+    /// to a [`CStr`], including any encoding guarantees provided by the string type.
+    /// 
+    /// If this is `true`, then [`Self::ENCODE_NUL`] must also be `true`.
     pub const NUL_TERM: bool = false;
 
     /// Uses pointer magic to transmute a byte slice to an instance of Mutf8Str

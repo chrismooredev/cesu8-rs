@@ -345,47 +345,6 @@ pub(crate) fn utf8_to_cesu8_io<const CHUNK_SIZE: usize, const ENCODE_NUL: bool, 
     }
 }
 
-pub fn utf8_to_cesu8_string<const CHUNK_SIZE: usize, const ENCODE_NUL: bool>(src: Cow<str>) -> Cow<[u8]> {
-    let Some(first_bad_idx) = check_utf8_to_cesu8::<CHUNK_SIZE, true>(src.as_bytes()) else {
-        // SAFETY: utf8_to_cesu8 would have returned Some(_) on cesu8 error
-        return match src {
-            Cow::Borrowed(s) => Cow::Borrowed(s.as_bytes()),
-            Cow::Owned(s) => Cow::Owned(s.into_bytes()),
-        }
-    };
-
-    let mut dst = Vec::with_capacity(crate::default_cesu8_capacity(src.len()));
-    dst.extend_from_slice(&src.as_bytes()[..first_bad_idx]); // initial push
-    let mut src = &src[first_bad_idx..];
-    
-    loop {
-        let mut chars = src.chars();
-        let Some(ch) = chars.next() else {
-            // nothing left to convert
-            break;
-        };
-        src = chars.as_str();
-
-        if ENCODE_NUL && ch == '\0' {
-            dst.push(b'\0');
-        } else {
-            debug_assert_eq!(ch.len_utf8(), 4, "signaled to encode utf8 sequence that isn't nul byte or of length four");
-            let cesu_bytes = enc_surrogates(ch as u32);
-            dst.extend_from_slice(&cesu_bytes);
-        };
-
-        let use_next_utf8 = check_utf8_to_cesu8::<CHUNK_SIZE, true>(src.as_bytes())
-            .unwrap_or(src.len());
-
-        let (consumed, rest) = src.split_at(use_next_utf8);
-        dst.extend_from_slice(consumed.as_bytes());
-        src = rest;
-    }
-
-    // we've converted everything, and had to allocate
-    Cow::Owned(dst)
-}
-
 /// An encoding error occured at the specified position. This information can be used to assert the portion up to
 /// `valid_up_to` is correct, or skip over invalid data.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -395,9 +354,12 @@ pub struct EncodingError {
 }
 
 impl EncodingError {
+    /// The index into the string up to which the string is valid for the encoding.
     pub fn valid_up_to(&self) -> usize {
         self.valid_up_to
     }
+    /// An estimation of how long the error lasts. If [`None`], then this error may be fixed
+    /// with additional followup bytes.
     pub fn error_len(&self) -> Option<NonZeroU8> {
         self.error_len
     }

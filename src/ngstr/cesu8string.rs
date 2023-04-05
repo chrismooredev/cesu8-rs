@@ -2,9 +2,11 @@ use std::borrow::Borrow;
 use std::ops::Deref;
 
 
-use crate::ngstr::preamble::*;
+use crate::ngstr::prelude::*;
 
-
+/// An owned CESU-8 encoded string.
+/// 
+/// See crate documentation for encoding details.
 #[derive(PartialEq, Eq, Clone, Default)]
 pub struct Cesu8String {
     pub(crate) inner: Vec<u8>,

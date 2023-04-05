@@ -1,6 +1,6 @@
 
 use crate::Cesu8Error;
-use crate::preamble::*;
+use crate::prelude::*;
 
 /// Convert CESU-8 data to a Rust string, re-encoding only if necessary.
 /// Returns an error if the data cannot be represented as valid UTF-8.

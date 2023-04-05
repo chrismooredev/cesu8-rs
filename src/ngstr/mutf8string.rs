@@ -2,9 +2,12 @@ use std::borrow::Borrow;
 use std::ops::Deref;
 
 use super::mutf8str::Mutf8Str;
-use super::preamble::*;
+use super::prelude::*;
 
 
+/// An owned MUTF-8 encoded string.
+/// 
+/// See crate documentation for encoding details.
 #[derive(PartialEq, Eq, Clone, Default)]
 pub struct Mutf8String {
     pub(crate) inner: Vec<u8>,
