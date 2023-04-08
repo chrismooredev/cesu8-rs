@@ -3,6 +3,7 @@
 #![feature(const_trait_impl)]
 #![feature(const_deref)]
 #![feature(assert_matches)]
+#![feature(round_char_boundary)]
 
 #![allow(clippy::let_unit_value)]
 #![allow(clippy::unit_arg)]
@@ -28,16 +29,19 @@
 //!
 //! ```
 //! use std::borrow::Cow;
-//! use cesu8str::{Cesu8Str, Variant};
+//! use cesu8str::Cesu8Str;
 //!
 //! // 16-bit Unicode characters are the same in UTF-8 and CESU-8.
-//! assert_eq!("aé日".as_bytes(), Cesu8Str::from_utf8("aé日", Variant::Standard).as_bytes());
-//! assert_eq!("aé日", Cesu8Str::from_cesu8("aé日".as_bytes(), Variant::Standard).unwrap());
+//! const TEST_STRING: &str = "aé日";
+//! const TEST_UTF8: &[u8] = TEST_STRING.as_bytes();
+//! assert_eq!(TEST_UTF8, Cesu8Str::from_utf8(TEST_STRING).as_bytes());
+//! let cesu_from_bytes = Cesu8Str::try_from_bytes(TEST_UTF8).unwrap();
+//! assert_eq!(TEST_UTF8, cesu_from_bytes.as_bytes());
 //!
 //! // This string is CESU-8 data containing a 6-byte surrogate pair,
 //! // which decodes to a 4-byte UTF-8 string.
 //! let data = &[0xED, 0xA0, 0x81, 0xED, 0xB0, 0x81];
-//! assert_eq!("\u{10401}", Cesu8Str::from_cesu8(data, Variant::Standard).unwrap());
+//! assert_eq!("\u{10401}", Cesu8Str::try_from_bytes(data).unwrap().to_str());
 //! ```
 //!
 //! ### A note about security

@@ -91,7 +91,7 @@ impl Cesu8Error {
     /// Basic usage:
     ///
     /// ```
-    /// use cesu8str::{Cesu8Str, Variant};
+    /// use cesu8str::{LegacyCesu8Str as Cesu8Str, Variant};
     ///
     /// // some invalid bytes, in a byte string
     /// // the '\xC0' is the first half to an embedded Java-style nul sequence

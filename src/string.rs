@@ -35,7 +35,7 @@ fn valid_replacement_char() {
 /// the JVM and JNI applications, encode a nul byte (hex `00`) as a UTF-8 2-byte zero
 /// character (hex `C0 80`)
 #[derive(Clone)]
-#[deprecated(since = "0.1.3", note = "use cesu8str::Mutf8CStr or cesu8str::Mutf8CString")]
+#[deprecated(since = "0.1.3", note = "use one of the types most appropriate for your string format (cesu8str::{Cesu8Str, Cesu8String, Mutf8Str, Mutf8String, Mutf8CStr, Mutf8CString})")]
 pub struct Cesu8Str<'s> {
     pub(crate) variant: Variant,
 
@@ -58,7 +58,7 @@ impl<'s> Cesu8Str<'s> {
     /// * Example 1: A valid UTF8/Ascii string
     /// ```
     /// # use std::str;
-    /// # use cesu8str::{Cesu8Str, Variant};
+    /// # use cesu8str::{LegacyCesu8Str as Cesu8Str, Variant};
     /// const VALID_UTF8: &[u8] = b"my valid string";
     /// let as_str = str::from_utf8(VALID_UTF8).map(|_| ());
     /// let as_cesu8 = Cesu8Str::from_cesu8(VALID_UTF8, Variant::Standard).unwrap();
@@ -68,11 +68,11 @@ impl<'s> Cesu8Str<'s> {
     /// * Example 2: Embedded Nuls are invalid UTF8
     /// ```
     /// # use std::str;
-    /// # use cesu8str::{Cesu8Str, Variant};
+    /// # use cesu8str::{LegacyCesu8Str as Cesu8Str, Variant};
     /// const INVALID_UTF8: &[u8] = b"with embedded \xC0\x80 null";
     /// let as_str = str::from_utf8(INVALID_UTF8).map(|_| ());
-    /// let as_cesu8 = Cesu8Str::from_cesu8(INVALID_UTF8, Variant::Java).unwrap();
-    /// assert_eq!(as_str, as_cesu8.utf8_error());
+    /// let as_mutf8 = Cesu8Str::from_cesu8(INVALID_UTF8, Variant::Java).unwrap();
+    /// assert_eq!(as_str, as_mutf8.utf8_error());
     /// let utf8_err = as_str.unwrap_err();
     /// assert_eq!(14, utf8_err.valid_up_to());
     /// assert_eq!(Some(1), utf8_err.error_len());
@@ -100,7 +100,7 @@ impl<'s> Cesu8Str<'s> {
     /// ### Valid CESU-8, Valid UTF-8, Valid ascii
     /// ```
     /// # use std::str::from_utf8;
-    /// # use cesu8str::{Cesu8Str, Variant};
+    /// use cesu8str::{LegacyCesu8Str as Cesu8Str, Variant};
     /// const ASCII: &[u8] = b"normal ascii string";
     /// let as_cesu8 = Cesu8Str::from_cesu8(ASCII, Variant::Standard).unwrap();
     ///
@@ -112,7 +112,7 @@ impl<'s> Cesu8Str<'s> {
     /// ### Valid CESU-8, Invalid UTF-8
     /// ```
     /// # use std::str::from_utf8;
-    /// # use cesu8str::{Cesu8Str, Variant};
+    /// use cesu8str::{LegacyCesu8Str as Cesu8Str, Variant};
     /// const VALID_CESU8: &[u8] = b"with embedded \xC0\x80 null";
     /// let as_cesu8 = Cesu8Str::from_cesu8(VALID_CESU8, Variant::Java).unwrap();
     ///
@@ -126,7 +126,7 @@ impl<'s> Cesu8Str<'s> {
     /// ### Invalid CESU-8, Invalid UTF-8
     /// ```
     /// # use std::str::from_utf8;
-    /// # use cesu8str::{Cesu8Str, Variant};
+    /// use cesu8str::{LegacyCesu8Str as Cesu8Str, Variant};
     /// const INVALID_CESU8: &[u8] = b"with embedded \xC0\x80 null"; // is valid Java variant, but test with Standard so it's invalid
     /// let as_cesu8_err = Cesu8Str::from_cesu8(INVALID_CESU8, Variant::Standard).unwrap_err();
     /// assert_eq!(14, as_cesu8_err.valid_up_to());
@@ -143,7 +143,7 @@ impl<'s> Cesu8Str<'s> {
     /// ### Invalid CESU-8, Valid UTF-8
     /// ```
     /// # use std::str::from_utf8;
-    /// # use cesu8str::{Cesu8Str, Variant};
+    /// use cesu8str::{LegacyCesu8Str as Cesu8Str, Variant};
     /// const VALID_UTF8: &str = "with literal \0 null";
     /// let as_cesu8_err = Cesu8Str::from_cesu8(VALID_UTF8.as_bytes(), Variant::Java).unwrap_err();
     ///
@@ -288,7 +288,7 @@ impl<'s> Cesu8Str<'s> {
     ///
     /// ```
     /// # use std::borrow::Cow;
-    /// # use cesu8str::{Cesu8Str, Variant};
+    /// use cesu8str::{LegacyCesu8Str as Cesu8Str, Variant};
     ///
     /// // Encode a UTF-8 str (that is also valid CESU-8) into CESU-8 without allocating
     /// let to_encode = "my string (valid CESU8)";

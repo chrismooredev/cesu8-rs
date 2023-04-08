@@ -105,20 +105,20 @@ impl_try_from_utf8_error_finish!(cesu8str::Cesu8Str, "Cesu8String");
 impl_try_from_utf8_error_finish!(mutf8str::Mutf8Str, "Mutf8String");
 impl_try_from_utf8_error_finish!(mutf8cstr::Mutf8CStr, "Mutf8CString");
 
-macro_rules! impl_from_with_nul {
-    ($e: ident, $srcitem: literal) => {
-        #[doc = concat!("A possible error value when converting a ", $srcitem, " into a Mutf8CString")]
+macro_rules! impl_from_error_vec {
+    ($e: ident, $errtype: ty, $srcitem: literal) => {
+        #[doc = concat!("A possible error value when converting a ", $srcitem, " into the requested string.")]
         #[doc = "\n\nThis acts as a wrapper type for the actual error, and an owned buffer that can be return"]
         #[doc = " the provided allocation."]
         #[derive(Debug, PartialEq, Eq, Clone)]
         pub struct $e {
-            kind: NGCesu8CError,
+            kind: $errtype,
             bytes: Vec<u8>,
         }
 
         impl $e {
             /// The specific kind of error encountered
-            pub fn kind(&self) -> NGCesu8CError {
+            pub fn kind(&self) -> $errtype {
                 self.kind
             }
             /// Receive the unmodified, originally provided owned byte string
@@ -129,8 +129,9 @@ macro_rules! impl_from_with_nul {
     }
 }
 
-impl_from_with_nul!(FromBytesWithNulError, "[`Vec<u8>`]");
-// impl_from_with_nul!(FromUtf8WithNulError, "[`String`]");
+impl_from_error_vec!(FromBytesError, EncodingError, "[`Vec<u8>`]");
+impl_from_error_vec!(FromBytesWithNulError, NGCesu8CError, "[`Vec<u8>`]");
+// impl_from_error_vec!(FromUtf8WithNulError, NGCesu8CError, "[`String`]");
 
 pub mod prelude {
     pub(crate) use crate::ngstr::*;
@@ -227,8 +228,8 @@ macro_rules! impl_str_encoding_meths {
         /// ```
         /// # use cesu8str::Mutf8CStr;
         ///
-        /// let mutf8str = Mutf8CStr::from_bytes_with_nul(b"foo\0").expect("Mutf8CStr::from_bytes_with_nul failed");
-        /// assert_eq!(mutf8str.to_bytes(), b"foo");
+        /// let mutf8str = Mutf8CStr::try_from_bytes_with_nul(b"foo\0").expect("Mutf8CStr::try_from_bytes_with_nul failed");
+        /// assert_eq!(mutf8str.as_bytes(), b"foo");
         /// ```
         pub fn as_bytes(&self) -> &[u8] {
             let b = self._raw_bytes();
@@ -418,14 +419,14 @@ macro_rules! impl_str_encoding_meths {
         ///
         /// # fn main() { test().unwrap(); }
         /// # fn test() -> Result<(), NGCesu8CError> {
-        /// let mutf8str = Mutf8CStr::from_bytes_with_nul(b"foo\0")?;
+        /// let mutf8str = Mutf8CStr::try_from_bytes_with_nul(b"foo\0")?;
         /// assert!(!mutf8str.is_empty());
         ///
-        /// let empty_mutf8str = Mutf8CStr::from_bytes_with_nul(b"\0")?;
+        /// let empty_mutf8str = Mutf8CStr::try_from_bytes_with_nul(b"\0")?;
         /// assert!(empty_mutf8str.is_empty()); // nul-terminator isn't included
         /// 
-        /// let cesu8str = Cesu8Str::from_bytes_with_nul(b"\0")?;
-        /// assert!(!cesu8str.is_empty()); // String contains a single nul-byte as contents.
+        /// let cesu8str = Cesu8Str::try_from_bytes(b"")?;
+        /// assert!(cesu8str.is_empty()); // String contains a single nul-byte as contents.
         /// # Ok(())
         /// # }
         /// ```
@@ -549,13 +550,13 @@ macro_rules! impl_str_encoding_meths {
         ///
         /// unsafe {
         ///     let mutf8cstring = Mutf8CString::new("hello").expect("Mutf8CString::new failed");
-        ///     let mutf8cstr = Mutf8CStr::from_bytes_with_nul_unchecked(mutf8cstring.to_bytes_with_nul());
+        ///     let mutf8cstr = Mutf8CStr::from_bytes_with_nul_unchecked(mutf8cstring.as_bytes_with_nul());
         ///     assert_eq!(mutf8cstr, &*mutf8cstring);
         /// }
         /// ```
         pub unsafe fn from_bytes_with_nul_unchecked(bytes: &[u8]) -> &Self {
             if cfg!(debug_assertions) {
-                match Self::from_bytes_with_nul(bytes) {
+                match Self::try_from_bytes_with_nul(bytes) {
                     Ok(s) => s,
                     Err(e) => panic!("bad string passed to from_bytes_with_nul_unchecked: {:?}", e)
                 }
@@ -583,7 +584,7 @@ macro_rules! impl_str_encoding_meths {
         /// ```
         /// use cesu8str::Mutf8CStr;
         ///
-        /// let mutf8cstr = Mutf8CStr::from_bytes_with_nul(b"hello\0");
+        /// let mutf8cstr = Mutf8CStr::try_from_bytes_with_nul(b"hello\0");
         /// assert!(mutf8cstr.is_ok());
         /// ```
         ///
@@ -592,7 +593,7 @@ macro_rules! impl_str_encoding_meths {
         /// ```
         /// use cesu8str::Mutf8CStr;
         ///
-        /// let mutf8cstr = Mutf8CStr::from_bytes_with_nul(b"hello");
+        /// let mutf8cstr = Mutf8CStr::try_from_bytes_with_nul(b"hello");
         /// assert!(mutf8cstr.is_err());
         /// ```
         ///
@@ -601,10 +602,10 @@ macro_rules! impl_str_encoding_meths {
         /// ```
         /// use cesu8str::Mutf8CStr;
         ///
-        /// let mutf8cstr = Mutf8CStr::from_bytes_with_nul(b"he\0llo\0");
+        /// let mutf8cstr = Mutf8CStr::try_from_bytes_with_nul(b"he\0llo\0");
         /// assert!(mutf8cstr.is_err());
         /// ```
-        pub fn from_bytes_with_nul(b: &[u8]) -> Result<&Self, NGCesu8CError> {
+        pub fn try_from_bytes_with_nul(b: &[u8]) -> Result<&Self, NGCesu8CError> {
             // quick-path if empty or not nul-terminated
             let contents: &[u8] = match b {
                 [rest @ .., b'\0'] => Ok(rest),
@@ -710,7 +711,7 @@ macro_rules! impl_str_encoding_meths {
         pub unsafe fn from_ptr<'a>(ptr: *const c_char) -> &'a Self {
             let cs = CStr::from_ptr(ptr);
             
-            Self::from_bytes_with_nul(cs.to_bytes_with_nul()).expect("invalid CStr passed to from_bytes_with_nul")
+            Self::try_from_bytes_with_nul(cs.to_bytes_with_nul()).expect("invalid CStr passed to from_bytes_with_nul")
         }
 
         /// Wraps a raw C string with a safe wrapper of this strings encoding.
@@ -754,8 +755,8 @@ macro_rules! impl_str_encoding_meths {
         /// ```
         /// use cesu8str::Mutf8CStr;
         ///
-        /// let mutf8str = Mutf8CStr::from_bytes_with_nul(b"foo\0").expect("Mutf8CStr::from_bytes_with_nul failed");
-        /// assert_eq!(mutf8str.to_bytes_with_nul(), b"foo\0");
+        /// let mutf8str = Mutf8CStr::try_from_bytes_with_nul(b"foo\0").expect("Mutf8CStr::try_from_bytes_with_nul failed");
+        /// assert_eq!(mutf8str.as_bytes_with_nul(), b"foo\0");
         /// ```
         pub fn as_bytes_with_nul(&self) -> &[u8] {
             check_term!(self._raw_bytes());
@@ -881,8 +882,10 @@ macro_rules! impl_string_encoding_meths {
 
         /// Validates a byte vector into this string's native encoding. If the validation is successful, and this string is
         /// nul-terminated, that is added.
-        pub fn from_bytes(b: Vec<u8>) -> Result<Self, crate::ngstr::EncodingError> {
-            prims::validate_cesu8::<{prims::DEFAULT_CHUNK}, {<Self as Deref>::Target::ENCODE_NUL}>(&b)?;
+        pub fn try_from_bytes(b: Vec<u8>) -> Result<Self, FromBytesError> {
+            if let Err(e) = prims::validate_cesu8::<{prims::DEFAULT_CHUNK}, {<Self as Deref>::Target::ENCODE_NUL}>(&b) {
+                return Err(FromBytesError { kind: e, bytes: b });
+            }
             let mut b = b;
             if <Self as Deref>::Target::NUL_TERM {
                 b.reserve_exact(1);
@@ -898,7 +901,7 @@ macro_rules! impl_string_encoding_meths {
         /// The bytes should be valid for the encoding of this string's type.
         pub unsafe fn from_bytes_unchecked(v: Vec<u8>) -> Self {
             if cfg!(debug_assertions) {
-                Self::from_bytes(v)
+                Self::try_from_bytes(v)
                     .expect("string passed to from_bytes_unchecked is invalid")
             } else {
                 let mut v = v;
@@ -1012,13 +1015,13 @@ macro_rules! impl_string_encoding_meths {
         /// ```
         /// use cesu8str::Mutf8CString;
         /// assert_eq!(
-        ///     unsafe { Mutf8CString::from_mutf8_vec_with_nul_unchecked(b"abc\0".to_vec()) },
-        ///     unsafe { Mutf8CString::from_mutf8_vec_unchecked(b"abc".to_vec()) }
+        ///     unsafe { Mutf8CString::from_bytes_with_nul_unchecked(b"abc\0".to_vec()) },
+        ///     unsafe { Mutf8CString::from_bytes_unchecked(b"abc".to_vec()) }
         /// );
         /// ```
         pub unsafe fn from_bytes_with_nul_unchecked(v: Vec<u8>) -> Self {
             if cfg!(debug_assertions) {
-                <Self as Deref>::Target::from_bytes_with_nul(&v).expect("string passed to from_bytes_with_nul_unchecked is invalid");
+                <Self as Deref>::Target::try_from_bytes_with_nul(&v).expect("string passed to from_bytes_with_nul_unchecked is invalid");
             }
 
             unsafe { Self::_from_bytes_unchecked(v) }
@@ -1042,8 +1045,8 @@ macro_rules! impl_string_encoding_meths {
         /// ```
         /// use cesu8str::Mutf8CString;
         /// assert_eq!(
-        ///     Mutf8CString::from_mutf8_vec_with_nul(b"abc\0".to_vec())
-        ///         .expect("Mutf8CString::from_mutf8_vec_with_nul failed"),
+        ///     Mutf8CString::try_from_bytes_with_nul(b"abc\0".to_vec())
+        ///         .expect("Mutf8CString::try_from_bytes_with_nul failed unexpectedly"),
         ///     Mutf8CString::new(b"abc".to_vec()).expect("Mutf8CString::new failed")
         /// );
         /// ```
@@ -1051,14 +1054,14 @@ macro_rules! impl_string_encoding_meths {
         /// An incorrectly formatted [`Vec`] will produce an error.
         ///
         /// ```
-        /// use cesu8str::{Mutf8CString, FromMutf8BytesWithNulError};
+        /// use cesu8str::{Mutf8CString, FromBytesWithNulError};
         /// // Interior nul byte
-        /// let _: FromMutf8BytesWithNulError = Mutf8CString::from_mutf8_vec_with_nul(b"a\0bc".to_vec()).unwrap_err();
+        /// let _: FromBytesWithNulError = Mutf8CString::try_from_bytes_with_nul(b"a\0bc".to_vec()).unwrap_err();
         /// // No nul byte
-        /// let _: FromMutf8BytesWithNulError = Mutf8CString::from_mutf8_vec_with_nul(b"abc".to_vec()).unwrap_err();
+        /// let _: FromBytesWithNulError = Mutf8CString::try_from_bytes_with_nul(b"abc".to_vec()).unwrap_err();
         /// ```
         pub fn try_from_bytes_with_nul(v: Vec<u8>) -> Result<Self, FromBytesWithNulError> {
-            match <Self as Deref>::Target::from_bytes_with_nul(&v) {
+            match <Self as Deref>::Target::try_from_bytes_with_nul(&v) {
                 Ok(_) => Ok(
                     // SAFETY: We've checked for a nul terminator and mutf8 encoding
                     unsafe { Self::_from_bytes_unchecked(v) }
@@ -1324,6 +1327,31 @@ impl_simple_str_traits!(base mutf8cstring::Mutf8CString);
 impl_simple_str_traits!(string cesu8string::Cesu8String);
 impl_simple_str_traits!(string mutf8string::Mutf8String);
 impl_simple_str_traits!(string mutf8cstring::Mutf8CString);
+
+impl<'b> TryFrom<&'b [u8]> for &'b cesu8str::Cesu8Str {
+    type Error = EncodingError;
+    fn try_from(value: &'b [u8]) -> Result<Self, Self::Error> {
+        cesu8str::Cesu8Str::try_from_bytes(value)
+    }
+}
+impl<'b> TryFrom<&'b [u8]> for &'b mutf8str::Mutf8Str {
+    type Error = EncodingError;
+    fn try_from(value: &'b [u8]) -> Result<Self, Self::Error> {
+        mutf8str::Mutf8Str::try_from_bytes(value)
+    }
+}
+impl TryFrom<Vec<u8>> for cesu8string::Cesu8String {
+    type Error = FromBytesError;
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        cesu8string::Cesu8String::try_from_bytes(value)
+    }
+}
+impl TryFrom<Vec<u8>> for mutf8string::Mutf8String {
+    type Error = FromBytesError;
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        mutf8string::Mutf8String::try_from_bytes(value)
+    }
+}
 
 #[test]
 fn strings_impl_expected_traits() {

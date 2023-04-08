@@ -365,7 +365,17 @@ impl EncodingError {
     }
 }
 
-/// Matches exactly one CESU8/MUTF8 sequence, erroring if any other value (or not enough bytes) is found.
+impl std::error::Error for EncodingError {}
+impl fmt::Display for EncodingError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.error_len {
+            None => write!(f, "invalid data found at end (index {}) of cesu8/mutf8 encoded byte string, partial codepoint", self.valid_up_to),
+            Some(n) => write!(f, "invalid data found at index {} of cesu8/mutf8 encoded byte string, of approximate length {}", self.valid_up_to, n)
+        }
+    }
+}
+
+/// Matches exactly one CESU8/MUTF8 sequence, erroring if any other value (including non-cesu utf8 or not enough bytes) is found.
 /// * `Ok(length)` if a character was found
 /// * `Err(Some(()))` if an error was found
 /// * `Err(None)` if more information is needed

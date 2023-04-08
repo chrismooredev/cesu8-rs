@@ -20,7 +20,7 @@ use crate::prelude::*;
 /// assert_eq!(Cow::Borrowed("\u{10401}"),
 ///            from_cesu8(data).unwrap());
 /// ```
-pub fn from_ces8(bytes: &[u8]) -> Result<Cow<str>, Cesu8Error> {
+pub fn from_cesu8(bytes: &[u8]) -> Result<Cow<str>, Cesu8Error> {
     Cesu8Str::try_from_bytes(bytes)
         .map(|cesu| cesu.to_str())
         .map_err(|ee| Cesu8Error {

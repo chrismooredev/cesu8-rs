@@ -38,6 +38,19 @@ mod chars {
 
         assert!(std::str::from_utf8(THREE_BYTE_ED_UTF8.as_bytes()).is_ok());
     }
+
+    /// This encoding can not tell the difference between a surrogate pair that is the right way round, and one
+    /// that is swapped. This makes it particularly difficult to seek within a sequence of them - we must navigate
+    /// to the end or beginning of the sequence (the edge would include a three-byte utf8 sequence) and go from there
+    #[test]
+    fn swapped_pair_codepoints_are_invalid() {
+        let half1 = &PURPLE_CIRCLE_CESU8[..3];
+        let half2 = &PURPLE_CIRCLE_CESU8[3..];
+        let mut combined = half2.to_vec();
+        combined.extend(half1);
+        let res = Cesu8Str::try_from_bytes(&combined);
+        res.expect_err("swapped cesu8 surrogate pair considered valid cesu8");
+    }
 }
 
 mod string {

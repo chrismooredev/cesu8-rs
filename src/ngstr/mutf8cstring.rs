@@ -101,7 +101,7 @@ impl Mutf8CString {
         fn from_bytes(mut b: Vec<u8>) -> Result<Mutf8CString, NGCesu8CError> {
             b.reserve_exact(1);
             b.push(b'\0');
-            Mutf8CStr::from_bytes_with_nul(&b)
+            Mutf8CStr::try_from_bytes_with_nul(&b)
                 .map(|_| ()) // drop the borrowed Mutf8CStr, knowing it was successful
                 .map(move |_| Mutf8CString { inner: b })
         }
