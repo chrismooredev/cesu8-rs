@@ -5,7 +5,7 @@ use std::io::{ErrorKind, Read, Write};
 
 use clap::Parser;
 
-use cesu8str::{Cesu8Str, Variant};
+use cesu8str::{Cesu8Str, Variant, Mutf8Str};
 
 const HELP_TEXT: &str = "Converts files or standard IO streams between standard UTF8 and CESU8, or the JVM's modified UTF-8.
 Note that the default Windows' console does not support non-UTF8 sequences - attempting to type/print them will result in an error.
@@ -190,26 +190,31 @@ fn read_write_loop(
                         (s, Some((e.valid_up_to(), e.error_len())))
                     }
                 };
-                let bytes = Cesu8Str::from_utf8(s, variant).into_bytes();
+                let bytes = match variant {
+                    Variant::Standard => Cesu8Str::from_utf8(s).as_bytes().to_owned(),
+                    Variant::Java => Mutf8Str::from_utf8(s).as_bytes().to_owned()
+                };
                 (bytes, err)
             } else {
-                let res = Cesu8Str::from_cesu8(&buf[..end], variant);
+                let res = match variant {
+                    Variant::Standard => Cesu8Str::try_from_bytes(&buf[..end]).map(|b| b.to_str()),
+                    Variant::Java => Mutf8Str::try_from_bytes(&buf[..end]).map(|b| b.to_str()),
+                };
+                // let res = Cesu8Str::from_cesu8(&buf[..end], variant);
                 // debugln!("from_cesu8 = {:?}", res);
                 let (s, err) = match res {
                     Ok(s) => (s, None),
                     Err(e) => {
                         // for various reasons, there is no from_cesu8_unchecked
-                        let s = Cesu8Str::from_cesu8(&buf[..e.valid_up_to()], variant).unwrap();
+                        let s = match variant {
+                            Variant::Standard => unsafe { Cesu8Str::from_bytes_unchecked(&buf[..e.valid_up_to()]).to_str() },
+                            Variant::Java => unsafe { Mutf8Str::from_bytes_unchecked(&buf[..e.valid_up_to()]).to_str() },
+                        };
                         // debugln!("valid_cesu8 = (len = {} = 0x{:X}) {:?}", s.as_bytes().len(), s.as_bytes().len(), s);
-                        (s, Some((e.valid_up_to(), e.error_len())))
+                        (s, Some((e.valid_up_to(), e.error_len().map(|n| n.get() as usize))))
                     }
                 };
-                let as_str = s.into_str();
-                let bytes = match as_str {
-                    Cow::Owned(b) => Cow::Owned(b.into_bytes()),
-                    Cow::Borrowed(b) => Cow::Borrowed(b.as_bytes()),
-                };
-                (bytes, err)
+                (s.into_owned().into_bytes(), err)
             };
 
             // if let Some(e) = err {

@@ -93,8 +93,11 @@ macro_rules! emit_test_case {
 
 use rusty_fork::rusty_fork_test;
 
-#[cfg(all(unix, feature = "build-binary"))]
+#[cfg(feature = "build-binary")]
 emit_test_case!(entry);
+
+#[cfg(not(feature = "build-binary"))]
+compile_error!("test binary cesu8str_converts_stdio must be build with feature 'build-binary' to be useful");
 
 // Must enable non-blocking read for subprocess stdout or we deadlock on input of partial codepoints
 // 
