@@ -123,6 +123,7 @@ pub use ngstr::{
     cesu8str::Cesu8Str,
     cesu8string::Cesu8String,
     mutf8str::Mutf8Str,
+    mutf8string::Mutf8String,
     mutf8cstr::Mutf8CStr,
     mutf8cstring::Mutf8CString,
     mutf8cstr::FromStrWithNulError,

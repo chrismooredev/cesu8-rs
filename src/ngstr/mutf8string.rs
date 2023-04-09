@@ -14,8 +14,8 @@ pub struct Mutf8String {
 }
 
 impl Mutf8String {
-    impl_string_encoding_meths!(base);
-    impl_string_encoding_meths!(string);
+    impl_string_encoding_meths!(base, "MUTF-8");
+    impl_string_encoding_meths!(string, "MUTF-8");
 }
 
 impl Mutf8String {

@@ -10,8 +10,8 @@ pub struct Cesu8Str {
 }
 
 impl Cesu8Str {
-    impl_str_encoding_meths!(base);
-    impl_str_encoding_meths!(str);
+    impl_str_encoding_meths!(base, Cesu8Str, any, "CESU-8");
+    impl_str_encoding_meths!(str, Cesu8Str, any, "CESU-8");
 }
 
 impl Cesu8Str {

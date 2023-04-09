@@ -101,8 +101,8 @@ pub struct Mutf8CStr {
 }
 
 impl Mutf8CStr {
-    super::impl_str_encoding_meths!(base);
-    super::impl_str_encoding_meths!(cstr);
+    super::impl_str_encoding_meths!(base, Mutf8CStr, all, "MUTF-8");
+    super::impl_str_encoding_meths!(cstr, Mutf8CStr, all, "MUTF-8");
 }
 
 impl Mutf8CStr {

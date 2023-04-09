@@ -40,8 +40,8 @@ pub struct Mutf8CString {
     pub(crate) inner: Vec<u8>,
 }
 impl Mutf8CString {
-    impl_string_encoding_meths!(base);
-    impl_string_encoding_meths!(cstring);
+    impl_string_encoding_meths!(base, "MUTF-8");
+    impl_string_encoding_meths!(cstring, "MUTF-8");
 }
 
 impl Mutf8CString {

@@ -9,8 +9,8 @@ pub struct Mutf8Str {
 }
 
 impl Mutf8Str {
-    impl_str_encoding_meths!(base);
-    impl_str_encoding_meths!(str);
+    impl_str_encoding_meths!(base, Mutf8Str, any, "MUTF-8");
+    impl_str_encoding_meths!(str, Mutf8Str, any, "MUTF-8");
 }
 
 impl Mutf8Str {

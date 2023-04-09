@@ -209,7 +209,7 @@ macro_rules! check_term {
 pub(crate) use check_term;
 
 macro_rules! impl_str_encoding_meths {
-    (base) => {
+    (base, $tyname:tt, $nulterm:tt, $encname:literal) => {
         // expects the following functions available
         
         // Unsafe transformation into this type. If the type is nul-terminated, that must be included.
@@ -219,17 +219,21 @@ macro_rules! impl_str_encoding_meths {
         // fn _raw_bytes(&self) -> &[u8];
 
 
-        /// Converts this CESU-8/MUTF-8 C string to a byte slice.
+        #[doc = concat!("Converts this ", $encname, " string to a byte slice, with its native encoding.")]
         ///
-        /// If applicable, the returned slice will **not** include the trailing nul terminator.
+        #[cfg_attr($nulterm(), doc = "The returned slice will **not** include the trailing nul terminator.")]
         ///
         /// # Examples
         ///
         /// ```
-        /// # use cesu8str::Mutf8CStr;
-        ///
-        /// let mutf8str = Mutf8CStr::try_from_bytes_with_nul(b"foo\0").expect("Mutf8CStr::try_from_bytes_with_nul failed");
-        /// assert_eq!(mutf8str.as_bytes(), b"foo");
+        #[doc = concat!("# use cesu8str::", stringify!($tyname), ";\n")]
+        #[cfg_attr(not($nulterm()), doc = concat!(
+            "let cesu = ", stringify!($tyname), "::try_from_bytes(b\"foo\").unwrap();"
+        ))]
+        #[cfg_attr($nulterm(), doc = concat!(
+            "let cesu = ", stringify!($tyname), "::try_from_bytes_with_nul(b\"foo\\0\").unwrap();"
+        ))]
+        /// assert_eq!(cesu.as_bytes(), b"foo");
         /// ```
         pub fn as_bytes(&self) -> &[u8] {
             let b = self._raw_bytes();
@@ -241,21 +245,21 @@ macro_rules! impl_str_encoding_meths {
             }
         }
 
-        /// Converts this type into a UTF-8 string, allocating only when necessary.
+        #[doc = concat!("Converts this ", $encname, " string into a UTF-8 string, allocating only when necessary.")]
         /// 
-        /// To try converting this to a string and receving an error if not possible, try
+        /// To try fallibly converting this to a UTF-8 string, and erroring if conversion is needed, try
         /// `std::str::from_utf8(mutf8str.as_bytes())`
         pub fn to_str(&self) -> Cow<str> {
             // SAFETY: any types implementing this trait should be valid cesu8
             unsafe { prims::cesu8_to_utf8::<{Self::ENCODE_NUL}>(Cow::Borrowed(self.as_bytes())) }
         }
 
-        /// Attempts to convert a UTF-8 string into this string types' native encoding. The returned string
+        #[doc = concat!("Attempts to convert a UTF-8 string into ", $encname, ". The returned string")]
         /// can be borrowed from the source UTF-8 string, or from the provided buffer.
         /// 
         /// If the source string is usable as-is, it is cast and returned. If the source string can be converted into
         /// a byte string that fits within the buffer, it is reencoded and returned. Otherwise, if some form of allocation
-        /// or a larger buffer is necessary, then an error is returned.
+        /// or a larger buffer is necessary, an error is returned.
         /// 
         /// The returned error can be used to complete the conversion to an owned string, without re-parsing the beginning.
         pub fn try_from_utf8_into_buf<'s>(s: &'s str, buf: &'s mut [u8]) -> Result<&'s Self, TryFromUtf8Error<'s, Self>> {
@@ -357,7 +361,7 @@ macro_rules! impl_str_encoding_meths {
             }
         }
 
-        /// Converts a UTF8 string into this string's native encoding. If possible, the string slice will be returned as
+        #[doc = concat!("Converts a UTF-8 string into ", $encname, ". If possible, the string slice will be returned as")]
         /// is. If not, the provided buffer is used. If the string is too big for the buffer, it will be allocated.
         #[inline]
         pub fn from_utf8_into_buf<'s>(s: &'s str, buf: &'s mut [u8]) -> Cow<'s, Self> {
@@ -403,30 +407,35 @@ macro_rules! impl_str_encoding_meths {
             // }
         }
 
-        /// The length of this string in bytes. If this string includes a nul-terminator, that is not included.
+        /// The length of this string in bytes.
+        #[cfg_attr($nulterm(), doc = " The nul-terminator is not included.")]
         pub fn len(&self) -> usize {
             self.as_bytes().len()
         }
 
-        /// Returns `true` if `self.to_bytes()` has a length of 0.
+        /// Returns `true` if [`as_bytes()`][Self::as_bytes]` has a length of 0.
         ///
         /// # Examples
         ///
         /// ```
-        /// use cesu8str::Cesu8Str;
-        /// use cesu8str::Mutf8CStr;
+        #[doc = concat!("use cesu8str::", stringify!($tyname), ";\n")]
         /// # use cesu8str::NGCesu8CError;
         ///
         /// # fn main() { test().unwrap(); }
-        /// # fn test() -> Result<(), NGCesu8CError> {
-        /// let mutf8str = Mutf8CStr::try_from_bytes_with_nul(b"foo\0")?;
-        /// assert!(!mutf8str.is_empty());
-        ///
-        /// let empty_mutf8str = Mutf8CStr::try_from_bytes_with_nul(b"\0")?;
-        /// assert!(empty_mutf8str.is_empty()); // nul-terminator isn't included
-        /// 
-        /// let cesu8str = Cesu8Str::try_from_bytes(b"")?;
-        /// assert!(cesu8str.is_empty()); // String contains a single nul-byte as contents.
+        #[cfg_attr($nulterm(), doc = concat!("
+# fn test() -> Result<(), NGCesu8CError> {
+let empty = Mutf8CStr::try_from_bytes_with_nul(b\"\\0\")?;
+assert!(empty.is_empty()); // nul-terminator isn't included
+
+let foo = Mutf8CStr::try_from_bytes_with_nul(b\"foo\\0\")?;
+assert!(!foo.is_empty());"))]
+        #[cfg_attr(not($nulterm()), doc = concat!("
+# fn test() -> Result<(), NGCesu8CError> {
+let empty = ", stringify!($tyname), "::try_from_bytes(b\"\")?;
+assert!(empty.is_empty());
+
+let foo = ", stringify!($tyname), "::try_from_bytes(b\"foo\")?;
+assert!(!foo.is_empty());"))]
         /// # Ok(())
         /// # }
         /// ```
@@ -434,7 +443,7 @@ macro_rules! impl_str_encoding_meths {
             self.as_bytes().is_empty()
         }
 
-        /// Checks that `index`-th byte is the first byte in a UTF-8 code point
+        #[doc = concat!("Checks that `index`-th byte is the first byte in a ", $encname, " code point")]
         /// sequence or the end of the string.
         ///
         /// The start and end of the string (when `index == self.len()`) are
@@ -445,7 +454,8 @@ macro_rules! impl_str_encoding_meths {
         /// # Examples
         ///
         /// ```
-        /// let s = "Löwe 老虎 Léopard";
+        #[doc = concat!("# use cesu8str::", stringify!($tyname), "ing;")]
+        #[doc = concat!("let s = ", stringify!($tyname), "ing::from_utf8(\"Löwe 老虎 Léopard\".to_owned());")]
         /// assert!(s.is_char_boundary(0));
         /// // start of `老`
         /// assert!(s.is_char_boundary(6));
@@ -482,12 +492,13 @@ macro_rules! impl_str_encoding_meths {
             }
         }
     };
-    (str) => {
-        /// Transmutes the byte slice into this string's encoding.
+    (str, $tyname:tt, $nulterm:tt, $encname:literal) => {
+        #[doc = concat!("Transmutes the byte slice into ", $encname,".")]
         /// 
         /// # Safety
-        /// The byte slice should be valid for this string's encoding. See each type's documentation for more information
-        /// regarding their encoding invariants.
+        #[doc = concat!("The byte slice must be valid ", $encname)]
+        #[cfg_attr($nulterm(), doc = ", including the nul-terminator")]
+        #[doc = concat!(". See [", stringify!($tyname), "][cesu8str::", stringify!($tyname), "] for more information regarding their encoding and invariants.")]
         pub unsafe fn from_bytes_unchecked(bytes: &[u8]) -> &Self {
             if cfg!(debug_assertions) {
                 if let Err(e) = Self::try_from_bytes(bytes) {
@@ -498,8 +509,8 @@ macro_rules! impl_str_encoding_meths {
             Self::_from_bytes_unchecked(bytes)
         }
 
-        /// Validates a byte slice into this string. This will never allocate. If an error occurs, position information
-        /// is returned through the [`EncodingError`]
+        #[doc = concat!("Validates a byte slice as ", $encname, ". This will never allocate.")]
+        /// If an error occurs, position information is returned through the [`EncodingError`]
         pub fn try_from_bytes(b: &[u8]) -> Result<&Self, crate::ngstr::prims::EncodingError> {
             prims::validate_cesu8::<{prims::DEFAULT_CHUNK}, {Self::ENCODE_NUL}>(b)
                 .map(|()| unsafe { Self::_from_bytes_unchecked(b) })
@@ -533,7 +544,7 @@ macro_rules! impl_str_encoding_meths {
             prims::utf8_to_cesu8_io::<{prims::DEFAULT_CHUNK}, {Self::ENCODE_NUL}, W>(s, false, w, &mut BufferUsage::default()).map(|bu| bu.written)
         }
     };
-    (cstr) => {
+    (cstr, $tyname:tt, $nulterm:tt, $encname:literal) => {
         /// Unsafely creates an MUTF-8 C string wrapper from a byte slice.
         ///
         /// This function will cast the provided `bytes` to a `Mutf8CStr` wrapper without
@@ -838,7 +849,7 @@ macro_rules! impl_str_encoding_meths {
 }
 
 macro_rules! impl_string_encoding_meths {
-    (base) => {
+    (base, $encname:literal) => {
         // expects these functions
         // #[doc(hidden)]
         // unsafe fn _from_bytes_unchecked(v: Vec<u8>) -> Self;
@@ -997,10 +1008,10 @@ macro_rules! impl_string_encoding_meths {
 
         // fn into_inner(self) -> Vec<u8>;
     };
-    (string) => {
+    (string, $encname:literal) => {
 
     };
-    (cstring) => {
+    (cstring, $encname:literal) => {
         /// Converts a <code>[Vec]<[u8]></code> into this string type without checking the
         /// string's invariants on the given [`Vec`].
         ///
@@ -1216,7 +1227,7 @@ macro_rules! impl_string_encoding_meths {
 }
 
 macro_rules! impl_simple_str_traits {
-    (base $S:ty) => {
+    (base $S:ty, $encname:literal) => {
         impl fmt::Debug for $S {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 <str as fmt::Debug>::fmt(&self.to_str(), f)
@@ -1233,7 +1244,7 @@ macro_rules! impl_simple_str_traits {
             }
         }
     };
-    (str $S:ty) => {
+    (str $S:ty, $encname:literal) => {
         impl<'a> Add<&'_ str> for &$S {
             type Output = <$S as ToOwned>::Owned;
             fn add(self, rhs: &str) -> Self::Output {
@@ -1261,7 +1272,7 @@ macro_rules! impl_simple_str_traits {
             }
         }
     };
-    (string $S:ty) => {
+    (string $S:ty, $encname:literal) => {
         impl From<String> for $S {
             fn from(s: String) -> $S {
                 <$S>::from_utf8(s)
@@ -1314,19 +1325,19 @@ macro_rules! impl_simple_str_traits {
 
 use std::fmt;
 use std::hash::Hash;
-impl_simple_str_traits!(base cesu8str::Cesu8Str);
-impl_simple_str_traits!(base mutf8str::Mutf8Str);
-impl_simple_str_traits!(base mutf8cstr::Mutf8CStr);
-impl_simple_str_traits!(str cesu8str::Cesu8Str);
-impl_simple_str_traits!(str mutf8str::Mutf8Str);
-impl_simple_str_traits!(str mutf8cstr::Mutf8CStr);
+impl_simple_str_traits!(base cesu8str::Cesu8Str, "CESU-8");
+impl_simple_str_traits!(base mutf8str::Mutf8Str, "MUTF-8");
+impl_simple_str_traits!(base mutf8cstr::Mutf8CStr, "MUTF-8");
+impl_simple_str_traits!(str cesu8str::Cesu8Str, "CESU-8");
+impl_simple_str_traits!(str mutf8str::Mutf8Str, "MUTF-8");
+impl_simple_str_traits!(str mutf8cstr::Mutf8CStr, "MUTF-8");
 
-impl_simple_str_traits!(base cesu8string::Cesu8String);
-impl_simple_str_traits!(base mutf8string::Mutf8String);
-impl_simple_str_traits!(base mutf8cstring::Mutf8CString);
-impl_simple_str_traits!(string cesu8string::Cesu8String);
-impl_simple_str_traits!(string mutf8string::Mutf8String);
-impl_simple_str_traits!(string mutf8cstring::Mutf8CString);
+impl_simple_str_traits!(base cesu8string::Cesu8String, "CESU-8");
+impl_simple_str_traits!(base mutf8string::Mutf8String, "MUTF-8");
+impl_simple_str_traits!(base mutf8cstring::Mutf8CString, "MUTF-8");
+impl_simple_str_traits!(string cesu8string::Cesu8String, "CESU-8");
+impl_simple_str_traits!(string mutf8string::Mutf8String, "MUTF-8");
+impl_simple_str_traits!(string mutf8cstring::Mutf8CString, "MUTF-8");
 
 impl<'b> TryFrom<&'b [u8]> for &'b cesu8str::Cesu8Str {
     type Error = EncodingError;
